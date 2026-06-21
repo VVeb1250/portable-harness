@@ -1,0 +1,123 @@
+# Shared BRAIN (L0 Substrate) — Draft Spec
+
+> สถานะ: **Draft / design-only** · **REVISED 2026-06-21 (ICM-direct)**.
+> เจ้าของ: supimol.web@gmail.com · mindset: [../CLAUDE.md](../CLAUDE.md) · คู่กับ: [ARCHITECTURE.md](./ARCHITECTURE.md)
+> ขอบเขต = **Layer 0 (shared brain) เท่านั้น**. cockpit = L1, team = L2.
+
+---
+
+## 0. สรุป (บรรทัดเดียว)
+
+**Shared BRAIN = `ICM` (memory) + `RTK` (token-cut, tool layer) + curated tool bundle + `AGENTS.md` (instructions).**
+**`ICM` ยืนเองได้ ไม่ต้องพึ่ง portaw** — `icm init` เสียบเข้าทุก host เอง. portaw (โปรเจกต์ตัวเอง, **archived**) = optional overlay ใช้ opportunistically, **อย่า hinge**.
+
+> ไม่ใช่ "seamless model-access" (vendor บล็อก + คนอื่นทำแล้ว) — แต่ "seamless substrate ใต้ agent" = ToS-immune, policy-immune, ของเรา.
+
+---
+
+## 1. Foundation = ICM (standalone)
+
+[rtk-ai/icm](https://github.com/rtk-ai/icm) — "Permanent memory for AI agents. Single binary, zero deps, MCP-native." (ตระกูลเดียวกับ RTK)
+
+- **multi-host เอง:** `icm init` default = **`standard` = cli + skill + hook, NO MCP** → inject CLAUDE.md/AGENTS.md instructions + slash-cmd + hook ต่อ host (MCP opt-in `--mode mcp/all`). **→ ICM ผ่าน CLI = 0 tool-def tax** (N1-safe). **ไม่ต้องมี portaw.** ⚠️ v0.10.53: host auto-detect อาจ miss ("not detected") → fallback = CLI bridge ผ่าน CLAUDE.md instruction (STATUS §8).
+- **store เดียว ใช้ร่วม:** SQLite local เดียว (`%APPDATA%\Roaming\icm\icm\data\memories.db`); CLI + (opt) MCP เข้าตัวเดียวกัน → host เขียน → host อื่นอ่านเจอ.
+- **CLI:** `icm store -t <topic> -c "<content>" -i <critical|high|medium|low> -k "<kw>"` · `icm recall "<q>"` · `icm forget <id>` · `icm consolidate` · `icm topics`.
+- **governance ในตัว:** decay by importance (critical=ไม่ลบ), dedup >85% similar = update ไม่ซ้ำ.
+- **privacy win:** local-only, ไม่มี network write → code/memory ไม่ออกนอกเครื่อง. (คนละเรื่องกับ model-routing ไป GLM = risk ที่ L1)
+- สถานะเครื่องนี้: **LIVE v0.10.53** (store/recall verified; `portaw mem status`=True หลัง PATH/restart) ← lynchpin L0 ขึ้นแล้ว. ⚠️ PowerShell เรียก `icm.exe` (`icm`=Invoke-Command alias).
+
+## 2. portaw = optional overlay (archived — salvage, ห้าม depend)
+
+- คำสั่ง portaw **รันได้จริง** (probe ผ่าน: `install`/`sets`/`mem`/`doctor`) แต่ **โปรเจกต์ archived** (เจ้าของว่า "ทรงไม่ค่อยเวิค", ยังไม่ทำต่อ) → **brain ต้องไม่ขึ้นกับมัน**.
+- ค่าที่ portaw เพิ่ม (ถ้าเลือกใช้):
+
+  | portaw feature | ทำอะไร | แทนได้ด้วย (จาก candidate-backlog เอง) |
+  |---|---|---|
+  | `mem` | governance overlay (distrust-on-miss) เหนือ ICM | ICM decay/dedup ในตัว (พอสำหรับ v1) |
+  | `sets` + `install --host` | curated bundle + patch (cc/codex/gemini) | hand-curated `mcp.json` · `rulesync` |
+  | `agents-md` | AGENTS.md @import bridge | `openai/agents.md` + `rulesync` |
+  | `bench` | token-delta | `ccusage --offline` ตรงๆ |
+
+- **ท่ามาตรฐาน:** ใช้ ICM เป็นแกน. ถ้าวันใด revive portaw ค่อยเสริม governance/sets ทับ.
+
+---
+
+## 3. The stack (ICM center, portaw optional)
+
+```
+        ┌──────── hosts (first-party CLIs) ────────┐
+        │  Claude Code · Codex · Gemini (+GLM via CC)
+        └───────┬───────────┬───────────┬──────────┘
+                │ MCP        │ MCP       │ MCP      ← icm init เสียบเอง
+        ┌───────▼───────────▼───────────▼──────────┐
+   MEM  │  ICM  (serve/CLI, 1 SQLite, local-only)   │  ← foundation
+        │     · · · · (optional) portaw mem overlay │
+        ├───────────────────────────────────────────┤
+  TOOLS │  curated mcp.json  (or portaw sets)        │
+        ├───────────────────────────────────────────┤
+  INSTR │  AGENTS.md  (agents.md/rulesync; or portaw)│
+        ├───────────────────────────────────────────┤
+ TOKEN  │  RTK tool-layer: hook(Gemini/Copilot✓)/pipe│
+        └───────────────────────────────────────────┘
+```
+
+---
+
+## 4. Wire-up recipe = L0 ทั้งหมด
+
+```powershell
+# --- CORE (ไม่ต้องมี portaw) ---
+irm https://raw.githubusercontent.com/rtk-ai/icm/main/install.ps1 | iex   # 1) ติดตั้ง (SHA256-verified); restart terminal ให้ PATH ติด
+icm.exe init                                                              # 2) standard (cli+skill+hook); host miss ได้ → CLI bridge fallback
+icm.exe store -t test -c "brain online" -i high -k "smoke"               # 3) acceptance (⚠️ icm.exe: PS 'icm'=Invoke-Command alias)
+icm.exe recall "brain online"                                            #    เขียน host นึง → อ่านอีก host เห็น
+
+# --- TOOL BUNDLE (เลือกทาง) ---
+#   a) hand-curated: เขียน mcp.json (codegraph/context7/fetch/desktop-commander) แล้ว patch แต่ละ host
+#   b) opportunistic portaw: portaw install efficiency-starter --host claude-code -y   (+ codex, gemini)
+
+# --- INSTRUCTIONS ---  AGENTS.md (agents.md/rulesync)  หรือ  portaw agents-md --link
+
+# --- TOKEN-CUT (RTK tool layer) ---  wire `rtk hook` ต่อ host (ดู §5)
+#   ⚠️ rtk hook = claude/cursor/gemini/copilot เท่านั้น (ยืนยันแล้ว ไม่มี codex) → Codex: PATH-shim/`rtk pipe`
+#   + พิจารณา Headroom layer-2 (long-tail compress, reversible) — ดู BENCH.md §2a stack-marginal
+```
+
+## 5. Token-cut (RTK, tool layer)
+
+ตรวจแล้ว: RTK **ไม่มี** `serve` daemon, แต่มี `hook` (รองรับ **Gemini CLI, Copilot**), `pipe` (filter stdin สากล), `rewrite` (engine).
+
+| Host | วิธี | สถานะ |
+|---|---|---|
+| Claude Code | hook เดิม (+ bypass กัน double) | ✓ |
+| Gemini | `rtk hook` | wire |
+| Codex | `rtk hook` ถ้าครอบ; ไม่งั้น PATH-shim (`git→rtk git`) / `rtk pipe` | **ยืนยัน coverage** |
+
+วัด: `rtk gain` / `rtk cc-economics` / `ccusage`. **ไม่มี code ใหม่** นอกจาก glue.
+
+---
+
+## 6. Acceptance
+
+1. cross-host memory: `icm store` (Codex ctx) → `icm recall` (CC) เห็น + กลับกัน.
+2. shared tools: cc/codex/gemini เห็น bundle เดียวกัน.
+3. token-cut: non-CC รัน `git status` → output ย่อ; ตัวเลขขึ้น.
+4. no-clobber: `icm init` / patch ทำ backup; config user ไม่หาย.
+
+## 7. Risks
+
+| Risk | Mitigation |
+|---|---|
+| hinge บน portaw (archived) | **ICM-direct**; portaw = optional overlay เท่านั้น |
+| ICM ยังไม่ติดตั้ง = brain ตาย | step 1-2 recipe; CLAUDE.md mistakes ก็รอ ICM เหมือนกัน |
+| tool-def กิน token ทุก host | คัด server น้อย-คม; CLI > MCP บน load-all; ≤2-3 MCP/set |
+| Codex ไม่อยู่ใน `rtk hook` | PATH-shim / `rtk pipe` fallback |
+| privacy (memory) | ICM local-only — ไม่รั่ว |
+| paw/personal contents | ship schema/empty เท่านั้น |
+
+## 8. Open questions
+
+1. tool bundle: hand-curated `mcp.json` หรือ revive `portaw sets`? (เริ่ม hand-curated = พึ่งตัวเองน้อยสุด)
+2. governance: ICM decay/dedup พอ หรือต้อง paw overlay (distrust-on-miss)?
+3. Codex อยู่ใน `rtk hook` coverage ไหม?
+4. instructions: `agents.md`+`rulesync` หรือ `portaw agents-md`?

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "port-a-whip"
+version = "0.0.1"
+description = "Curated cross-host agent harness (paw) — token-cut + shared-brain + one-command bundle linker"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+# Read-path (sets list/show) = stdlib only. Write-path (link/verify) adds the [cli] extra.
+dependencies = []
+
+[project.optional-dependencies]
+cli = ["click>=8", "tomlkit>=0.12"]
+
+[project.scripts]
+paw = "paw.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+include = ["paw/**"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"paw/registry/sets.json" = "paw/registry/sets.json"
