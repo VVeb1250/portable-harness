@@ -78,8 +78,9 @@
 **→ DESIGN LOCKED 2026-06-22 (ARCHITECTURE §11 + A-15/A-16):** router = agent-pull **3 event-keyed recall lanes** (capability READ/search · memory ICM · **mistake PreToolUse action-key**) + bundle-linker (portaw core + codegraph-link UX). no paid LLM, ~0 always-on. supersede portaw blind-push.
 
 **→ BUILDING (linker-first):**
-- [x] **Step 0** scaffold `harness/` package + `pyproject.toml` (placeholder pkg name `harness`).
-- [~] **Step 1** lift portaw sets-subtree → **read-path DONE+verified** (`config.py`+`sets/loader.py`+`registry/sets.json` lifted verbatim, stdlib-only; `py -m harness sets list/show` runs, 8 sets). **เหลือ write-path:** lift `patcher`/`healthcheck`/`install`/`runner`/`state` (ต้อง rewrite `portaw.*`→`harness.*` + click/tomlkit deps).
+- [x] **Step 0** scaffold + `pyproject.toml`. **ชื่อ LOCKED: project `port-a-whip` · package/CLI `paw`** (รีนาม harness→paw; pkg import=`paw` ไม่ชน old `portaw`). logo idea = 🐾 paw = brain-pad + toes=hosts.
+- [x] **Step 1 read-path** — lift `config.py`+`sets/loader.py`+`registry/sets.json` verbatim (stdlib-only); `py -m paw sets list/show` ✓ 8 sets. **เหลือ write-path:** lift `patcher`/`healthcheck`/`install`/`runner`/`state` (rewrite `portaw.*`→`paw.*` + tomlkit dep; ⚠️ **`patcher` audit ก่อน** — มัน mutate host config).
+- ✅ **CHECKPOINT git `cef81a3`** (main, 18 files, gitleaks clean) · home `E:\portable-harness`. port-a-whip เก่า (`~/.claude/port-a-whip`) = retire **หลัง** salvage write-path (ยังเป็น source).
 - [ ] **Step 2** `link <bundle>` multi-set + managed marker-block `<!-- bundle:start/end -->` + N1 gate (codegraph-link UX).
 - [ ] **Step 3** smoke `link secure-agent` e2e.
 
