@@ -167,3 +167,21 @@
   - **demo หลักฐานคม:** own semantic query "database performance optimization" → **0 hits** (bm25-only) ทั้งที่ narration เคลม "keyword can't do that" = **semantic advantage DORMANT out-of-box.**
   - **VERDICT A-07:** ceiling agentmemory > ICM (published bench) **แต่ out-of-box Windows floor < ICM** — ICM MiniLM ทำงานเลย (paraphrase 100% hit@3); agentmemory bm25-only ทำ paraphrase ไม่ได้จน config. **"best AND convenient" → ICM ชนะ convenient (keep as default memory engine); agentmemory = reference/ceiling ถ้ายอม config.** full LongMemEval head-to-head = **deferred** (ต้อง enable agentmemory full-mode + dataset harness = follow-up session เฉพาะ).
   - A-07 ปิดบางส่วน: ICM adequate+convenient ✓; quality-at-scale vs agentmemory ยังเปิด (แต่ friction ทำให้ agentmemory เป็น default ที่แย่กว่าตาม North Star #2).
+
+## 12. 🔱 FORK RESOLVED — paw re-identity (2026-06-22, discussed w/ user)
+
+**ตัดสิน: FORK (paw standalone), ไม่ fold เข้า ECC.** เหตุ = team-axis จริง (ECC audit §11 ชี้ paw-as-harness redundant แต่ paw ปลายทาง = agent-team ซึ่ง ECC ไม่ไป). **paw นิยามใหม่:**
+
+> **paw = personal, cross-host, shared-brain agent-team substrate** — ไม่ใช่ "harness แข่ง ECC".
+
+**locked (user 2026-06-22):**
+- **#1 = personal** → ToS landmine ปลด (ride seat *ตัวเอง* interactive = defensible; **ห้าม ship/resell/OSS-arbitrage**). scope = **personal-tool, อย่า over-engineer เป็น product/distribution.** (กลับ §5 open#1 → personal-first ชนะ)
+- **#2 coordination = B (shared-state/blackboard) + heterogeneous members.** members แต่ละตัว **มี brain เอง + specialty เอง** (Opus reason · GLM bulk · Codex/Gemini ฯลฯ) + แชร์ ICM blackboard. = **two-tier memory** (shared + per-member private). = "ทีม specialist + สมองกลาง" ≠ ECC (single-agent optimization).
+- **coordination ladder (A-17):** A task-handoff = table-stakes (AgentPool ฟรี, ไม่ใช่ moat) · **B shared-state = moat (build)** · C mesh/role-protocol = commodity (LangGraph/AutoGen/ECC-layer4 → **rent ถ้าต้อง, อย่าสร้าง = portaw รอบ 4**).
+- **L0 scope = thin + team-shaped:** สร้างเฉพาะ shared-brain(ICM) + cross-host wiring + seat-router(personal). **general-harness breadth (skills/instincts/441) = ECC ทำดีแล้ว → wrap/ปล่อย, ห้าม rebuild.**
+
+**OPEN (#4 timeline — กำลังคุยต่อ):** L2-team ใกล้/ไกล? ลำดับ validate. near-term concrete = **เทส harness-on-CC ก่อน** (= `paw link secure-agent` MVP) → ขยาย Codex/Gemini → แล้วค่อย team.
+
+**FLAG (future, ยังไม่ออกแบบ — memory topology fork):** shared vs private อะไรเข้าไหน · write-conflict/governance บน shared brain · attribution (teammate ไหนเรียนอะไร). ICM topics/project/attribution น่าจะ map. **อย่าให้ block harness-on-CC test.**
+
+**alignment:** งาน session นี้ (bench best · AGENTS.md shared-brain content · sets · ICM) = ชิ้นส่วน substrate นี้ทั้งหมด, ไม่เสียเปล่า. เปลี่ยนแค่ framing (harness→team-substrate). **docs reframe pass (ARCHITECTURE L0→L2 wording) = pending แต่ defer** (ไม่ block).
