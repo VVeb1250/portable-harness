@@ -7,11 +7,13 @@
 
 ## 1. Through-line ที่ตกผลึกแล้ว
 
+> **⚠️ PIVOT 2026-06-22 — §11-13 SUPERSEDE §1-§10 บางส่วน. อ่าน §13 เป็น authoritative.** §1-§10 = pre-pivot "harness" framing. ของที่เปลี่ยน: (1) paw ≠ general harness แต่ = **personal cross-host shared-brain agent-team substrate** (ECC redundant กับ harness layer, §11). (2) **moat distro = ตาย** (ECC ทำแล้ว) → moat ใหม่ = **personal cost/quota economics (ride seat) + agentic+shared-brain glue** ที่ Fusion/ECC ไม่มี. (3) L2-team value = cost/quota ไม่ใช่ quality (team ไม่ชนะ solo net-of-compute, §13). (4) resume-pointer "build linker MVP" = **demoted → parallel** (primary = scout Agyn/MASAI fork + cost/quota A/B, §13.3). หลักที่ยังยืน: ICM-first · wire-not-build · CLI/hook>MCP · replaceable.
+
 **ICM-first · regime-agnostic · replaceable · wire-not-build · CLI/hook > MCP (N1).**
 
-- harness = **layered**: **L0 brain** (now) → **L1 routing/cockpit** (next) → **L2 team** (future, gated).
-- moat จริง = curation + token-cut + shared-memory ข้าม agent = **distro ไม่ใช่ tech-moat**.
-- orchestration มี **2 แกนแยกกัน**: (i) backend/model routing [claude-code-router] = L1 · (ii) agent team [AgentPool] = L2. **AgentPool ถูกปลดจาก spine → L2 candidate (gated)**.
+- harness = **layered**: **L0 brain** (now) → **L1 routing/cockpit** (next) → **L2 team** (future, gated). *(L2-team ตอนนี้ = direction หลัก ไม่ใช่ "future gated" — §12/§13)*
+- ~~moat จริง = curation + token-cut + shared-memory = distro~~ **← OUTDATED (§11): ECC ทำ distro นี้แล้ว. moat ใหม่ = personal team-substrate (seat-economics + shared-brain + agentic glue).**
+- orchestration มี **2 แกนแยกกัน**: (i) backend/model routing [claude-code-router] = L1 · (ii) agent team [AgentPool] = L2. **AgentPool ถูกปลดจาก spine → L2 candidate (gated)**. *(§13: AgentPool = fork candidate ③ สำหรับ seat-riding)*
 
 ## 2. Layered model — ยืนตรงไหน
 
@@ -143,7 +145,7 @@
 
 **ทำก่อนสุด = G1** (ถูก + load-bearing): Gemini พร้อม smoke. ทุกอย่างที่เหลือ assume cross-host เวิค — verify ก่อน build บนสมมุติฐานนั้น.
 
-**→ NEXT (resume pointer 2026-06-22): G5 RESOLVED → BUILD `paw link secure-agent` MVP (Step 2).** decision locked = salvage portaw subtree staged (§10 G5). lift order สำหรับ MVP (0-MCP set):
+**→ ~~NEXT~~ PARALLEL/secondary (⚠️ demoted by §13 — primary next = §13.3 scout Agyn/MASAI + cost/quota A/B): `paw link secure-agent` MVP (Step 2).** decision locked = salvage portaw subtree staged (§10 G5). lift order สำหรับ MVP (0-MCP set):
 1. `agents_md.py` (63L) → `paw/bridge.py` verbatim (rewrite `portaw.*`→`paw.*`; stdlib-only, no dep). ship `bundle/AGENTS.md` เป็นไฟล์ + `@AGENTS.md` import. **ห้าม clobber AGENTS.md เดิม user** → append-or-import.
 2. `runner.py`(94)+`install.py`(222) → run `non_mcp[].install` steps, argv `shell=False`, untrusted-never-autorun, record → `state.py`(109) สำหรับ clean `remove`.
 3. `healthcheck.py`(126) → `verify secure-agent` gate (`shutil.which` nah/gitleaks/osv/infisical).
