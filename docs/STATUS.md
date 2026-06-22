@@ -1,6 +1,6 @@
 # STATUS — session state (compact-survival)
 
-> อัพเดท: 2026-06-21 · จุดประสงค์: state ก้อนเดียวให้ session หลัง-compact อ่านต่อได้ครบ.
+> อัพเดท: 2026-06-22 · จุดประสงค์: state ก้อนเดียวให้ session หลัง-compact อ่านต่อได้ครบ. **เริ่ม session ใหม่อ่าน §13 (handoff ล่าสุด) ก่อน.**
 > Doc map: [CLAUDE.md](../CLAUDE.md) mindset · [ARCHITECTURE.md](./ARCHITECTURE.md) blueprint · [SHARED-BRAIN.md](./SHARED-BRAIN.md) L0 detail · **STATUS.md (นี่)** = ล่าสุด + ตกค้าง.
 
 ---
@@ -185,3 +185,42 @@
 **FLAG (future, ยังไม่ออกแบบ — memory topology fork):** shared vs private อะไรเข้าไหน · write-conflict/governance บน shared brain · attribution (teammate ไหนเรียนอะไร). ICM topics/project/attribution น่าจะ map. **อย่าให้ block harness-on-CC test.**
 
 **alignment:** งาน session นี้ (bench best · AGENTS.md shared-brain content · sets · ICM) = ชิ้นส่วน substrate นี้ทั้งหมด, ไม่เสียเปล่า. เปลี่ยนแค่ framing (harness→team-substrate). **docs reframe pass (ARCHITECTURE L0→L2 wording) = pending แต่ defer** (ไม่ block).
+
+## 13. 🤝 HANDOFF 2026-06-22 — agent-team direction + FORK ledger (อ่านก่อน resume)
+
+arc: ECC collision (§11) → FORK resolved (§12) → drilled #4 timeline + R2 value → literature swept. **context บวม, คุยต่อ session หน้า.**
+
+### 13.1 Strategic conclusions (post-§12)
+- **#3 coordination = B (shared-state) + heterogeneous members มี brain+specialty เอง.** ladder: A task-handoff = table-stakes (AgentPool ฟรี) · **B = moat** · C mesh/role-protocol = **rent** (LangGraph/AutoGen, อย่าสร้าง).
+- **#4 timeline = risk-ordered ไม่ใช่ date.** validate cheapest-load-bearing ก่อน ด้วย **vertical tracer-bullet (2-agent slice)** ไม่ใช่ horizontal build-L0-ทุก-host. rung0 CC-MVP (ถูก low-info) → rung1 R2 probe (existential) → rung2 expand.
+- **R2 decomposed:** R2a structure/same-vendor · R2b heterogeneity/cross-vendor.
+- **📚 LITERATURE VERDICT (swept — อย่า re-run):**
+  - R2a same-vendor structure vs solo compute-controlled → **solo ชนะ/เสมอ** (Tran&Kiela arXiv 2604.02460; Cognition "don't build multi-agents" for coding).
+  - **coding/SWE-bench cost-controlled: "single agents win on cost-controlled efficiency; bottleneck = MODEL not scaffolding; multi-agent OVERENGINEERED."** (2-5x token).
+  - R2b heterogeneity = value driver จริง **แต่พิสูจน์ผ่าน ENSEMBLE (MoA) ไม่ใช่ team:** MoA arXiv 2406.04692 "hetero contribute far more than clones" · **OpenRouter Fusion** (ship Mar-2026, = MoA) Fable5+GPT5.5→Opus-judge 69% > Fable5 65.3%, budget panel beats Opus ถูกกว่า = **win-win ship แล้ว**.
+  - Anthropic multi-agent +90% แต่ 15x token, research ไม่ใช่ coding.
+- **🔑 VALUE-PROP REFRAME (สำคัญสุด):** team **ไม่ชนะ** solo บน coding-quality net-of-compute (settled). paw defensible value เหลือ **(B) personal cost/QUOTA economics เท่านั้น** — quality เทียบเท่าที่ **เงิน/quota ฉันถูกกว่า** (ride seat ที่จ่ายอยู่แล้ว + bulk→cheap vendor). **ไม่ใช่คำถามวิจัย → ไม่มีใคร bench → ต้อง personal A/B จิ๋ว ไม่ใช่ benchmark.**
+- **⚠️ conflation pattern (เกิด 3 รอบ):** user อ่าน evidence "combine/ensemble" เป็น "team support". **ensemble (Fusion/MoA) ≠ agentic-team.** Fusion = single-response win-win (SHIP แล้ว → rent); team = long-horizon agentic coding (Fusion ทำไม่ได้ แต่ literature-skeptical).
+- **🚨 STANDING WARNING (ต้องได้ยินซ้ำทุก session):** "scaffolding ไม่ใช่ bottleneck, model คือ; multi-agent overengineered." paw-team เสี่ยงแก้ปัญหาที่ไม่มี. → **build บาง; value = personal-economics only; rent ensemble(Fusion)+harness(ECC), build แค่ seat-riding + shared-brain + agentic glue.**
+
+### 13.2 🔱 FORK / REUSE LEDGER (user: "ไม่เคย fork หลายตัว, นึกภาพไม่ออก")
+**กุญแจ: ไม่ได้ fork เยอะ. fork จริง = 1-2 ตัว. ที่เหลือ = dep / reference / study.** "หลายตัว" = ภาพลวง. mental model 5 ชั้น:
+
+| ชั้น | นิยาม | ตัว |
+|---|---|---|
+| **① vendored subtree** (copy-in, own+maintain) | portaw installer subtree (agents_md/runner/install/healthcheck/state/patcher/router-hook-wiring) → `paw/` [§10 G5 ตัดสินแล้ว] |
+| **② dependency** (install+call, pin, ไม่ copy code) | ICM(mem) · rtk(token) · nah/gitleaks/osv/infisical(secure) · codegraph/ast-grep/context7(sets) · **OpenRouter Fusion**(per-call brain ผ่าน API) |
+| **③ fork skeleton** (fork 1 ตัวเป็นโครง, port idea จากตัวอื่น) | agent-team layer: **Agyn**(team-based SWE 2026, ใกล้ paw สุด) **OR MASAI**(modular specialist) — เลือก **1**, port pattern จาก HyperAgent/ALMAS · **+AgentPool**(phil65, A-02) = seat-riding/per-agent-billing |
+| **④ wrap/interop** (อยู่ข้าง, bridge ไม่ fork) | **ECC** — member รัน ECC เป็น L0; paw bridge บนนั้น |
+| **⑤ reference only** (เทียบ/วัด ไม่เข้า product) | agentmemory(mem ceiling) · MoA togethercomputer(ensemble ref) · SWE-bench-Lite/SWE-EVO(task data สำหรับ A/B §13.3) |
+
+→ **fork จริง = ① portaw subtree (decided) + ③ agent-team skeleton 1 ตัว (Agyn/MASAI, ยังไม่เลือก). ที่เหลือ = npm/pip install + เรียก, หรืออ่าน-แล้ว-port-idea.** ไม่ใช่ merge N codebase.
+
+### 13.3 Open threads (next session)
+1. **fork-ability scout** — pull Agyn + MASAI architecture ดู: fork-1-เป็นโครง vs build-thin-glue? (ก่อนเขียนโค้ด)
+2. **personal cost/quota A/B** — SWE-bench-Lite 2-3 task + seat ฉัน: team(ride seats, bulk→GLM) vs Opus-solo → resolution-rate hold @ my-cost ถูกกว่าไหม
+3. **R3 ToS** — auto-teammate แตะ Claude/Codex sub programmatic = ban risk แม้ personal → likely GLM/metered=auto, Claude/Codex=interactive-by-hand (§11 A3)
+4. **CC-MVP** `paw link secure-agent` (Track CONVENIENT, G5 ready) — ทำขนาน/ตอนว่าง
+5. **docs reframe** ARCHITECTURE L0→L2 → team-substrate (defer)
+
+**env state:** iii.exe บน PATH (`~/.local/bin`) · ccusage 20.0.14 · agentmemory 0.9.27 (engine bm25-only) · ICM 0.10.53 (`%LOCALAPPDATA%\icm\bin\icm.exe`) · bench harnesses ใน `bench/` (_compress_ab · _astgrep_ab · _icm_recall · mcp_tax) · tools live (rtk/nah hook).
