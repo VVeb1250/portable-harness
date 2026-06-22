@@ -99,9 +99,11 @@ Headroom เสริม RTK ไม่ใช่แทน → วัด **margina
 | arm | token (5-task suite) | accuracy | NET |
 |---|---|---|---|
 | OFF (baseline) | | | — |
-| RTK only | | | |
-| Headroom only | | | |
-| **RTK + Headroom** | | | |
+| RTK only | (per-cmd 85-91% / mixed 19.8% — Phase-1) | | |
+| Headroom only | **BLOCKED** | | |
+| **RTK + Headroom** | **BLOCKED** | | |
+
+> **§2a BLOCKED 2026-06-22:** headroom lane ลงไม่ได้บนเครื่องนี้ — `headroom-ai` 0.24.0 = mixed python/rust (maturin), build ตายที่ `link.exe failed: exit 1` (MSVC C++ Build Tools/Win SDK prereq หาย, py3.14.4). A-09 "VERIFIED/no-compiler" = ผิด, แก้แล้ว (STATUS §4b). headroom = optional +12% rung → ไม่คุ้มลง VS Build Tools (GB). recheck = prebuilt wheel / py≤3.13 / ตั้งใจลง MSVC.
 
 - prior art: [`sgaabdu4/claude-code-tips`](https://github.com/sgaabdu4/claude-code-tips) stack จริง (`headroom wrap claude` + rtk PreToolUse Bash) → **ศึกษา hook map ก่อน wire เอง**.
 - decision: stack เฉพาะถ้า marginal NET(layer2) > added complexity/latency (local HF model).
@@ -112,6 +114,26 @@ Headroom เสริม RTK ไม่ใช่แทน → วัด **margina
 - subset **LongMemEval** (MemPalace เคลม 96.6%). รัน ICM + Supermemory metric เดียวกัน.
 - คอลัมน์เพิ่ม: local/privacy · setup-friction · host-coverage (ICM=18-host เด่นตรงนี้ ไม่ใช่ quality).
 - ICM ไม่อยู่ใน leaderboard → นี่คือ A-07 ที่ต้องปิด.
+
+### Phase 2 — RESULTS (2026-06-22, partial — deterministic in-session; LLM-judged user-run)
+
+**deterministic ICM recall** (`bench/_icm_recall.py`, scratch db, no LLM, no moat pollution):
+
+| metric | value | note |
+|---|---|---|
+| **hit@3** | **100%** (8/8) | paraphrase queries, near-zero surface-word overlap → real **semantic** recall (embeddings) |
+| **MRR** | **0.938** | 7/8 ranked #1, 1 ranked #2 (Invoke-Command) |
+| inject cost | **179 tok/query** avg (toon fmt) | NB: `-f json` reports false ~17k (carries 384-d embedding arrays) — measure `toon` |
+
+→ retrieval **mechanically strong** บน corpus เล็ก. **caveat:** 8 lessons = ง่าย; moat จริงใหญ่กว่า → distractor เยอะ recall ยากขึ้น → 100% ที่นี่ ≠ 100% at scale.
+
+**LLM-judged `icm bench-recall` = BLOCKED in-session** (shells out to `claude` CLI as answer backend; `CLAUDECODE=1` → nested claude exit 1). **user-run:** เปิด terminal ธรรมดา (นอก Claude Code) →
+```
+icm.exe bench-recall --runs 3            # with/without ICM answer accuracy
+icm.exe bench-agent  --sessions 10       # end-to-end CC efficiency w/wo ICM
+```
+
+**A-07 ยังไม่ปิดสมบูรณ์:** (1) deterministic retrieval = ✓ (ดีบน corpus เล็ก). (2) LLM-judged answer-accuracy = pending standalone run. (3) **head-to-head vs MemPalace (LongMemEval) = ยังไม่ทำ** (ต้องลง MemPalace; likely Windows-friction เหมือน headroom) — นี่คือแกน "quality" ของ A-07 ที่ยังเปิด.
 
 ## 4. Phase 3 — stack-collapse
 
@@ -137,8 +159,10 @@ Headroom เสริม RTK ไม่ใช่แทน → วัด **margina
 
 | ต้องการ | reuse |
 |---|---|
-| token+accuracy harness | `headroom.evals` (fork) |
+| token+accuracy harness | `headroom.evals` (fork) — ⚠️ headroom Windows-blocked (maturin/MSVC) |
 | A/B token delta | `ccusage --offline` · `portaw bench` |
-| tax count | Anthropic `count_tokens` API |
+| tax count | Anthropic `count_tokens` API · `bench/mcp_tax.py` (tiktoken) |
+| shell-output / structural A/B | **`bench/_compress_ab.py`** (rtk) · **`bench/_astgrep_ab.py`** (ast-grep) — lifted, ran 06-22 |
+| memory recall (deterministic, no LLM) | **`bench/_icm_recall.py`** — ICM paraphrase hit@k, ran 06-22 |
+| memory eval (LLM-judged) | `icm bench-recall` / `bench-agent` (standalone terminal) · LongMemEval (public, vs MemPalace) |
 | stack wiring ตัวอย่าง | `sgaabdu4/claude-code-tips` hook map |
-| memory eval | LongMemEval (public) |
