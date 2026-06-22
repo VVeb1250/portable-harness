@@ -150,3 +150,20 @@
 4. `router.py` hook-wiring funcs (`enable/disable_hook`) → wire PreToolUse (nah self-wires via `nah install claude`; paw records).
 5. **defer `patcher.py`** (no MCP in secure-agent) จน efficiency-starter.
 ⚠️ audit lift ก่อน exec: `install.py` runner = argv-exec untrusted curated steps → ยืนยัน shell=False + no-metachar + N1 ceiling-warn ยังอยู่. tomlkit dep เข้าเฉพาะตอน lift `patcher` (MCP set), MVP ยังไม่ต้อง.
+
+## 11. ⚠️ ECC COLLISION — paw thesis overlap (2026-06-22, code-audited)
+
+**[affaan-m/ECC](https://github.com/affaan-m/ECC)** (219k★/33k fork, MIT, created 2026-01-18, push daily, 14 rel/30 contrib) = **paw category เป๊ะ + โตกว่ามาก + user ใช้อยู่แล้ว** (= rules/ecc/ + AGENTS.md + 246 skills/61 agents ใน system prompt). shallow-clone audit (3261 files, ไม่เชื่อ README):
+- **ECC HAS (paw redundant):** N1-tax **executed** (CHANGELOG: June-26 audit retired 6 default MCP→skills, default MCP=1) · skill-first 441 skills/67 agents · **13 host adapters** (>paw 3) · SQLite session-persist + instincts · control-pane · security(gateguard).
+- **ECC LACKS (paw residual niche, code-verified):** (1) **semantic long-term memory recall** — ECC mem = `memory-persistence` hook (session-start bounded-recency + observe-runner instinct-learn); NO embedding/vector retrieval (grep clean). (2) **measured token-NET** — `harness-audit.js` แค่เช็ค `docs/token-optimization.md` *exists*; token-cut = policy/docs ไม่ใช่ measured; bench/=0. (3) rtk shell-output compression (ไม่มีใน hooks).
+- **VERDICT:** paw-as-standalone-harness = **REDUNDANT** (ECC ชนะ harness layer 90% overlap, mature, user รันอยู่ → rebuild = portaw ซ้ำรอยขึ้นชั้น). paw defensible value ยุบเหลือ **2 อย่างที่ ECC ขาด: semantic-memory + empirical-measurement** (ทั้งคู่ complement ECC ไม่ใช่แข่ง).
+- **DECISION (user 2026-06-22): "audit ECC ลึกก่อนตัดสิน" = DONE (นี่).** fork ยัง OPEN: thin-overlay-on-ECC vs contribute-into-ECC vs re-scope-standalone. แต่ audit ชี้ชัด → paw scope ใหม่ = **"measured semantic-memory layer for ECC"**. (ไม่ lock จนกว่า user เลือก post-benchmark.)
+
+**[rohitg00/agentmemory](https://github.com/rohitg00/agentmemory)** (23.6k★, Apache-2.0, TS, push daily) = ICM challenger + **ตอบทั้ง A-07 และ paw-niche:**
+- **LongMemEval-S (500q): R@5 95.2% · R@10 98.6% · MRR 88.2%** (ICM ไม่มีเลข = A-07 gap). local-first (SQLite+iii-engine, zero external DB), free MiniLM (เหมือน ICM), **ไม่ต้อง API key**, BM25+Vector+Graph RRF. ไม่ใช่ MCP-only (CLI + REST + **7-tool lean fallback** ≠ 53 เสมอ → tax แก้ได้).
+- **DECISION (user): "benchmark comparator"** → vetted live 2026-06-22:
+  - install: `npm i -g @agentmemory/agentmemory` 0.9.27 = clean. **แต่ iii-engine boot ตาย Windows** (auto-install "zip isn't tar-compatible" win32) → manual fix = download `iii.exe` 0.11.2 จาก github release → `~/.local/bin` (Docker alt มี). **recoverable แต่ friction จริง** (คล้าย headroom class แต่ binary ไม่ใช่ compile).
+  - engine UP (REST :3111, 128 endpoints) **แต่ advanced retrieval OFF by default**: `Embeddings: bm25-only` + graph disabled. full mode (vector+graph = ที่ทำ R@5 95.2%) ต้อง config/key.
+  - **demo หลักฐานคม:** own semantic query "database performance optimization" → **0 hits** (bm25-only) ทั้งที่ narration เคลม "keyword can't do that" = **semantic advantage DORMANT out-of-box.**
+  - **VERDICT A-07:** ceiling agentmemory > ICM (published bench) **แต่ out-of-box Windows floor < ICM** — ICM MiniLM ทำงานเลย (paraphrase 100% hit@3); agentmemory bm25-only ทำ paraphrase ไม่ได้จน config. **"best AND convenient" → ICM ชนะ convenient (keep as default memory engine); agentmemory = reference/ceiling ถ้ายอม config.** full LongMemEval head-to-head = **deferred** (ต้อง enable agentmemory full-mode + dataset harness = follow-up session เฉพาะ).
+  - A-07 ปิดบางส่วน: ICM adequate+convenient ✓; quality-at-scale vs agentmemory ยังเปิด (แต่ friction ทำให้ agentmemory เป็น default ที่แย่กว่าตาม North Star #2).
