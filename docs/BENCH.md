@@ -65,6 +65,33 @@ python -m headroom.evals suite --tier 1   # GSM8K + TruthfulQA + workload tokens
 ```
 รันให้ Headroom; ทำ parallel runner ให้ RTK ด้วย metric เดียวกัน.
 
+### Phase 1 — RESULTS (2026-06-22, deterministic tiktoken cl100k A/B, tools LIVE this session, zero ccusage/cache noise)
+
+**Method (reframe 06-22):** ใช้ **clean deterministic into-context proxy** (tiktoken บน tool-output จริง, encoder เดียวกันทั้ง 2 lane) — **ไม่ใช่** ccusage full-session (contaminated). = ทางเชื่อถือได้: reproducible, 0 cache noise. harness reuse: `bench/_compress_ab.py` (rtk) · `bench/_astgrep_ab.py` (ast-grep) จาก port-a-whip.
+
+**rtk — shell-output cut** (portaw repo):
+
+| command | raw tok | rtk tok | cut% |
+|---|---|---|---|
+| git_log_stat | 1310 | 115 | **91.2** |
+| git_status | 83 | 12 | **85.5** |
+| mixed 6-cmd suite | 6400 | 5134 | 19.8 |
+
+→ per-command **85–91%** ที่ rtk fire จริง. mixed 19.8% = **UNDERSTATED artifact**: pytest row ใช้ `rtk py -m pytest` (rtk ไม่ rewrite `py -m` prefix → passthrough) + ls/grep ใช้ `git ls-files`/`git grep` (passthrough). lever จริง = bulky structured output (git/diff/build) → เรียก `rtk`-prefixed form. สอดคล้อง portaw anchor 26.3%-mixed.
+
+**ast-grep — structural rung** (route→route_v2 over portaw/):
+
+| mechanism | lane A (grep/read/edit) | lane B (ast-grep) | cut% |
+|---|---|---|---|
+| precision (find call sites) | text-grep 182 | 44 | **+75.8** |
+| codemod (rename 4 files/7 sites) | 911 tight … 9452 full | diff 127 | **+86.1 … +98.7** |
+
+**memory — ICM** live verified (icm 0.10.53 via `%LOCALAPPDATA%\icm\bin\icm.exe`); `recall` คืน scored relevant lessons. **LongMemEval ยังไม่รัน → A-07 เปิดอยู่** (quality vs MemPalace ยังไม่พิสูจน์).
+
+**instruments READY:** ccusage 20.0.14 ✓ · icm.exe located (PATH fix = เพิ่ม `%LOCALAPPDATA%\icm\bin`) ✓ · tiktoken 0.13.0 ✓.
+
+**ยัง vibes / open:** (1) full-session ccusage NET — contamination ยังไม่แก้ → **DEPRIORITIZED** (deterministic proxy แทนได้). (2) headroom stack-marginal §2a — headroom-ai 0.24.0 installable (A-09) ยังไม่รัน. (3) codegraph lane — ต้อง build index; prior proxy 06-08: callers/impact ~97% less, show-1-file 4.8x worse. (4) memory quality (LongMemEval).
+
 ### 2a. **stack-marginal** (คำถามใหม่จาก Headroom)
 
 Headroom เสริม RTK ไม่ใช่แทน → วัด **marginal NET ของการเพิ่ม layer 2**:
