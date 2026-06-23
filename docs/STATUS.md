@@ -226,3 +226,50 @@ arc: ECC collision (§11) → FORK resolved (§12) → drilled #4 timeline + R2 
 5. **docs reframe** ARCHITECTURE L0→L2 → team-substrate (defer)
 
 **env state:** iii.exe บน PATH (`~/.local/bin`) · ccusage 20.0.14 · agentmemory 0.9.27 (engine bm25-only) · ICM 0.10.53 (`%LOCALAPPDATA%\icm\bin\icm.exe`) · bench harnesses ใน `bench/` (_compress_ab · _astgrep_ab · _icm_recall · mcp_tax) · tools live (rtk/nah hook).
+
+---
+
+## 14. 🤝 HANDOFF 2026-06-23 — context-mode eval + LIVE-TEST pending (อ่านก่อน resume)
+
+**ตัวใหม่ที่ vet: `mksglu/context-mode`** (ELv2 source-available · local-first · 18k★ · v1.0.165 daily releases · TS). = **superset ของ compress + cross-host(17 platforms) + session-memory** — north star ของ paw ทั้งดุ้น สร้างเสร็จแล้ว. รายละเอียด bench เต็ม → [BENCH.md §7–7d](./BENCH.md).
+
+### 14.1 Vet verdict (ทำเสร็จ session นี้)
+- **License ELv2:** ✅ ใช้/fork/self-host personal ได้ฟรี · ❌ ห้ามขายเป็น hosted-service คู่แข่ง · มี license-key clause (ยังไม่ active paywall).
+- **Privacy PASS (#10):** local-first — data ลง SQLite FTS5 (`~/.claude/context-mode/`), 0 telemetry POST, fetch เดียว = user-directed `ctx_fetch_and_index` + SSRF guard (classifyIp block 169.254). `ctx_insight` = opt-in browser launcher. postinstall 0 network.
+- **Substance:** tests(vitest) + BENCHMARK.md(real fixtures) + daily ship.
+
+### 14.2 Bench ผล (instruments ใน `bench/_cm_*.py` + `_session_replay.py`)
+- **execute lane** (`ctx_execute_file`, Think-in-Code = รัน code ใน sandbox, log-only): **96% บน bulky** (git_log 2008→70 tok = 97%) vs rtk 64%. caveat: code-echo overhead → route output ใหญ่เท่านั้น; lossy.
+- **search lane** (`ctx_index`/`ctx_search`, FTS5 BM25): savings **98%/q lossless**, recall **100% lexical / 50% NL-paraphrase** (BM25 = lexical ไม่ semantic), session-dedup. **complementary กับ ICM** (ICM = semantic embeddings, paraphrase 100%) — ไม่ทับ.
+- **static tax: 7017 tok/session** (11 tools, mcp_tax) **+ 900 SessionStart inject = 8817**. ชน #7 (cap ≤2-3 MCP).
+- **hook audit:** **0-def NOT viable** — การบีบ = MCP tools ล้วน; hooks = routing-enforce (ชี้ไป ctx_ tools) + session-mem, **entangled กับ MCP**. nah guard integrity = ปลอดภัย (deny-wins). ⚠️ PreToolUse[Bash] race กับ rtk rewrite.
+- **🔑 session-replay บน 5 transcripts จริง** (`_session_replay.py`): **avg 33.8 bulky ops/session** (>> break-even ~12), **A ชนะ 4/5**, NET_A **153k** vs NET_B(rtk) **1.6k**. **rtk แทบไม่ fire** (git-specialized; bulky จริง = Grep/Read-analyze/web/MCP ที่ rtk ไม่แตะ). → **real data หนุน A** (พลิก lean-B เดิมที่มาจาก assumption ผิดว่า rtk บีบทุก bulky op).
+
+### 14.3 Decision (ตกลงแล้ว)
+**Adopt context-mode = project-scoped MCP opt-in** (ไม่ใช่ global, ไม่ใช่ hooks). rtk = global 0-tax default (harmless, แทบไม่ fire ที่นี่). ICM = semantic brain (survives). nah = guard (survives). → **kill paw write-path port สำหรับ self-built compress/cross-host** (context-mode ทำแล้ว+ดีกว่า). glue = wire context-mode+ICM+nah ต่อ host.
+
+### 14.4 ✅ ทำไปแล้ว session นี้
+- `.mcp.json` (project-scoped) เขียนแล้ว — verified `start.mjs` spawn 11 ctx_* tools สะอาด.
+- `bench/_cm_ab.py` (execute A/B) · `_cm_search_ab.py` (search matrix) · `_cm_probe.py` (MCP schema) · `_session_replay.py` (real-transcript NET + **live compliance counter**, baseline 0%).
+- BENCH.md §7–7d + STATUS §14 บันทึก.
+
+### 14.5 ⏭️ LIVE-TEST PENDING (resume จากตรงนี้)
+**user ต้องทำเอง** (CC restart เองไม่ได้จาก session นี้):
+1. **Restart CC** → prompt approve `context-mode` (project MCP) → ctx_* tools โหลด (**+7917 tok เฉพาะ repo นี้ ทุก session** จนกว่าลบ `.mcp.json`).
+2. ทำงานปกติ **3-5 session** (SessionStart inject นัด agent route ไป ctx_execute).
+3. **next-session (ผมทำ):** `py bench/_session_replay.py` → LIVE routing compliance % (ctx_ calls / bulky) + NET จริง · `ccusage session` → $ delta.
+
+**Keep/kill criterion:** compliance **≥50% → keep** (NET replay ยืนยัน ≥76k saved, ขยาย) · **<30% → kill** (`rm .mcp.json`, agent ไม่ route, tax กิน).
+
+**UPDATE 2026-06-23 (session ต่อ):**
+- ✅ **step 1 ยืนยัน DONE** — CC restart แล้ว, `context-mode` MCP LIVE (ctx_* 11 tools โหลด, +7917 tok/session repo นี้กำลังจ่ายจริง).
+- 🔴 **replay re-run (6 transcripts incl. post-restart `eb904c05`): LIVE compliance = 0%** (0 ctx_* calls / 173 bulky). NET_A model = A ชนะ 5/6 **แต่ routed=0 → ตอนนี้ net-NEGATIVE จริง** (จ่าย 7.9k/session, cut 0).
+- 🔑 **root cause = routing layer ไม่เคย wire.** §14.3 เลือก "MCP opt-in, NOT hooks" → ไม่มี SessionStart inject / PreToolUse nudge / instruction → agent default Bash/Read/Grep → 0% by construction. live-test วัดอะไรไม่ได้จนกว่ามี nudge.
+- 🔧 **fix (thin, 0-tax, KISS, ตรง §14.3 no-hooks):** เพิ่ม marked block `<!-- paw:ctx-routing-test -->` ใน project `CLAUDE.md` = routing rule (bulky→ctx_execute · doc→ctx_search · skip<200tok/read-to-edit). kill = ลบ block + `.mcp.json`.
+- ⏭️ **NEXT:** ทำงานจริง 3-5 session (nudge active) → `py bench/_session_replay.py` re-check compliance% + `ccusage session` $delta → apply keep/kill gate.
+
+### 14.6 Caveats / decay
+- **7917 tok/session** จ่ายทุก session ใน repo นี้หลัง restart (rollback = `rm .mcp.json`).
+- `.mcp.json` **hardcode path `C:\Users\VVeb1250\...`** = machine-specific, ยัง **ไม่ portable** (portable version ต้อง resolve dynamic — defer).
+- **FORK ledger impact** (§13.2): context-mode = candidate **② dependency** สำหรับ compress+session-mem+cross-host → หด scope ① portaw subtree ลงอีก.
+- ELv2 license-key: recheck เมื่อ version bump เพิ่ม key enforcement. bus-factor 1 (solo Mert Koseoglu) → mitigant: fork free-state ได้.

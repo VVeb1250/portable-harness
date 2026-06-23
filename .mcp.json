@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "context-mode": {
+      "command": "C:/Program Files/nodejs/node.exe",
+      "args": [
+        "C:/Users/VVeb1250/AppData/Roaming/npm/node_modules/context-mode/start.mjs"
+      ],
+      "env": {
+        "CONTEXT_MODE_PLATFORM": "claude-code"
+      }
+    }
+  }
+}

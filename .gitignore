@@ -21,3 +21,6 @@ venv/
 # local env
 .env
 .env.*
+
+# bench scratch — fixtures + vendored bundles, regenerable
+bench/out/

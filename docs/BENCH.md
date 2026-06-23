@@ -166,3 +166,92 @@ icm.exe bench-agent  --sessions 10       # end-to-end CC efficiency w/wo ICM
 | memory recall (deterministic, no LLM) | **`bench/_icm_recall.py`** — ICM paraphrase hit@k, ran 06-22 |
 | memory eval (LLM-judged) | `icm bench-recall` / `bench-agent` (standalone terminal) · LongMemEval (public, vs MemPalace) |
 | stack wiring ตัวอย่าง | `sgaabdu4/claude-code-tips` hook map |
+| compress + cross-host + session-mem | **`mksglu/context-mode`** (ELv2, local-first) — vetted + A/B 06-23, see §7 |
+
+---
+
+## 7. context-mode A/B (2026-06-23) — Think-in-Code vs rtk
+
+> repo: `mksglu/context-mode` v1.0.165 · ELv2 (source-available, free personal use) · 18k★ · daily releases.
+> harness: `bench/_cm_ab.py` (drives stdio MCP `ctx_execute_file`, tiktoken cl100k, same fixtures as `_compress_ab`).
+
+**Privacy (constraint #10):** PASS. server bundle = 0 telemetry `fetch()`; only fetch = user-directed `ctx_fetch_and_index` wrapped in SSRF guard (classifyIp blocks 169.254 metadata). storage local (`~/.claude/context-mode/`). `ctx_insight` = opt-in browser launcher, not a POST. deps all-local (better-sqlite3 FTS5, mcp-sdk). postinstall 0 network.
+
+**Mechanism:** not a compressor. `ctx_execute`/`ctx_execute_file` run agent-written code in a sandbox; **only `console.log()` enters context**, raw bytes stay in sandbox. Avoids the dump instead of shrinking it.
+
+**Result (payload = durable context cost; same fixtures as rtk lane):**
+
+| fixture | raw tok | rtk % | cm payload | **cm %** |
+|---|---|---|---|---|
+| git_log_stat | 2008 | 64 | 70 | **97** |
+| grep_todo | 497 | 0 | 21 | **96** |
+| ls_recursive | 132 | 0 | 9 | 93 |
+| git_status | 48 | 85 | 7 | 85 |
+| pytest_v | 38 | 0 | 17 | 55 |
+| git_diff | 9 | 0 | 9 | 0 |
+| **TOTAL mix** | **2732** | **49** | **133** | **95** |
+| **BIG (raw≥400)** | **2505** | — | **91** | **96** |
+
+- **96% headline = reproduced independently** (BIG lane). beats rtk (49% mix) on bulky aggregate-able output by avoiding the dump (97% vs 64% on git_log).
+- **caveat 1 — code-echo overhead:** MCP result echoes the code+path back (git_log gross 233 vs payload 70). on already-tiny output (git_diff 9→gross 60) = **net loss**. route execute_file to BIG output only (context-mode hook matchers enforce this).
+- **caveat 2 — lossy:** digest, not bytes. verbatim recall needs `ctx_index`/`ctx_search` (FTS5 BM25) lane — **not yet benched**.
+
+**Overlap / direction:** context-mode SUBSUMES paw compress lane (rtk) + cross-host wiring + session-continuity. ICM survives (long-term governed brain ≠ working-ctx mem). nah survives (permission BLOCK/ASK guard ≠ SSRF/cred guard). → kills rationale to port paw write-path for self-built compress/cross-host. Build thin glue: wire context-mode + ICM + nah per host.
+
+**Assumption ledger (recheck triggers):** (a) 96% verified ✓; (b) ELv2 license-key clause = no active paywall now, recheck on version bump that adds key enforcement; (c) bus-factor 1 (solo maintainer) + fast churn → mitigant: free-state source forkable.
+
+### 7b. lossless lane — ctx_index + ctx_search (FTS5 BM25), 2026-06-23
+
+> harness: `bench/_cm_search_ab.py` (fresh MCP session per cell). doc = context-mode README.md (94 KB = 23889 tok read-all). 8 (query, verbatim-answer-span) ground-truth pairs. matrix NL-paraphrase vs LEXICAL × limit {3,5}.
+
+| lane | limit | recall | avg/q tok | savings/q |
+|---|---|---|---|---|
+| LEXICAL (doc vocab) | 3 & 5 | **8/8 = 100%** | 551 | 97.7% |
+| NL (paraphrase) | 3 & 5 | **4/8 = 50%** | 506 | 97.9% |
+
+- **savings ~98%/query, LOSSLESS** (verbatim chunk, exact answer span returned). engine solid: LEXICAL recall 100%.
+- **recall is LEXICAL not semantic** — BM25 (Porter stem + trigram). query matching doc vocab → 100%; vague NL paraphrase → 50% first-shot (e.g. "snapshot size budget" misses the "priority-tiered XML snapshot" chunk). limit 3 vs 5 = no difference.
+- **session dedup discovered:** ctx_search will not re-inject a chunk already served this session (re-querying same content in one session returns ~empty). benign context-saver; harness must use fresh session per measurement cell.
+- **vs ICM (complementary, not overlapping):** ICM paraphrase recall = hit@3 100% (embeddings/semantic, §`_icm_recall`). context-mode FTS5 = lexical doc-search (fast, exact, lexical-sensitive). → keep ICM for semantic memory; context-mode for lexical doc/skill/MCP-list retrieval. Implication for wiring: agent should issue keyword-ish ctx_search queries (or retry with doc vocab on miss) to hit the 100% lexical regime.
+
+**Next:** wire decision — see §7c (hook audit) for why blanket adoption is gated.
+
+### 7c. hook/MCP wiring audit (2026-06-23) — why 0-def is not viable
+
+> measured this session before wiring into CC.
+
+**Static tax (mcp_tax on context-mode):** 11 tools = **7017 tok/session** (avg 637/tool; top: ctx_execute 1287, ctx_batch_execute 1148, ctx_search 1019). > codegraph(1653)+context7(964)+fetch(290) combined. Breaks north star #7 (cap ≤2-3 MCP).
+
+**Hook map (plugin hooks.json):** PreToolUse[Bash|WebFetch|Read|Grep|Agent|mcp__] = interception (block curl/WebFetch, nudge to ctx_ tools). PostToolUse[*]/UserPromptSubmit/SessionStart/Stop/PreCompact = session-memory (record + inject). `posttooluse.mjs` = non-blocking, no output mutation → **hooks do NOT compress; compression = MCP tools only.**
+
+**0-def NOT viable (key finding):** hooks are MCP-tool-entangled. SessionStart hook injects a **~900 tok routing block every session** that references `mcp__…ctx_*` heavily; session-memory is retrieved via `ctx_search` (an MCP tool). Without the 7k MCP tools, the hooks deliver only ~900 tok/session of instructions pointing at absent tools = pure waste. → any real value (compression OR memory) requires the 7k MCP tax.
+
+**Collision vs existing CC stack (rtk + nah×9/×6 + portaw + graphify on Pre/PostToolUse):**
+- ⚠️ **PreToolUse[Bash] race** — rtk rewrites the command (`git`→`rtk git`); context-mode also intercepts Bash. Two hooks mutating the same command = ordering/`updatedInput` conflict risk.
+- ✅ **nah guard integrity preserved** — CC semantics: any hook `deny` wins; context-mode cannot approve-override nah.
+- ✅ PostToolUse record / UserPromptSubmit / SessionStart / Stop = additive (latency + tokens, no conflict).
+- overhead: PreToolUse[mcp__] fires on every MCP call.
+
+**Decision:** blanket/global adoption rejected (7k tax + 900-tok injection + Bash race, against #7). **Recommended: project-scoped MCP, opt-in** — register context-mode MCP in this repo's `.mcp.json` only; tax confined to tool-output-heavy sessions where 97% compress + lossless search + session-mem clear the NET break-even. Keep **rtk as the global 0-tax compression default** (64%). Do NOT enable context-mode hooks globally. Re-measure real NET with `ccusage` over a few project sessions before any wider rollout.
+
+### 7d. session-replay on REAL transcripts (2026-06-23) — overturns the B-lean
+
+> harness: `bench/_session_replay.py`. Replays all 5 of this project's CC transcripts (464 tool_results) through measured A(context-mode)/B(rtk)/raw ratios. cl100k proxy. cm fixed = 8817/session (7017 defs + 900 inject); cm stats-keep 4%+120 echo, doc-keep 5%+120; rtk-keep 36% on git log/diff/status only; read-to-edit + small excluded.
+
+| session | ops | bulky_cm | raw | rtk | cm | NET_B | NET_A | win |
+|---|---|---|---|---|---|---|---|---|
+| 7a38c3fe | 241 | 74 | 160342 | 159022 | 60131 | 1320 | 100211 | A |
+| abf9a35f | 121 | 42 | 65425 | 65270 | 34857 | 155 | 30568 | A |
+| e0daed1e | 81 | 39 | 47503 | 47322 | 18467 | 181 | 29036 | A |
+| a67c415d | 14 | 11 | 10707 | 10707 | 9896 | 0 | 811 | A |
+| 7ae3fc64 | 7 | 2 | 1187 | 1187 | 8350 | 0 | −7163 | B (tiny session) |
+| **TOTAL** | 464 | 168 | 285164 | 283508 | 131701 | **1656** | **153463** | **A 4/5** |
+
+- **avg bulky cm-eligible ops/session = 33.6** — far above the ~12 break-even. The §7c/chart B-lean assumed a typical session has <12 bulky ops; real data says 33.6. **Correction: earlier lean-B was wrong.**
+- **why it flips:** the break-even chart credited rtk 64% on every bulky op. Real bulky ops are Grep / Read-to-analyze / WebSearch / MCP output — which rtk does NOT touch (it is git-output-specialized). rtk saved **1656 tok across all 464 ops** (~0); context-mode addresses all of them → 153k. So rtk's real per-op saving ≈ 0 on non-git output, and the bar to beat is near-zero, not 1280/op.
+- **ceiling caveat:** the cm numbers assume 100% routing (agent actually calls ctx_execute/ctx_index on every bulky op). Real compliance ~60% (README's own hook-less figure). Sensitivity: at 50% compliance NET_A ≈ 76k, still ≫ rtk 1656. Robust to routing discount.
+- **remaining unknown = live routing compliance** (agent behavior) — the one thing replay can't model. → resolved by the project-scoped live test: wire `.mcp.json`, run real sessions, compare `ccusage` deltas + observe actual ctx_ tool usage rate.
+
+**Updated decision:** real-data NET strongly favors A. Proceed to project-scoped `.mcp.json` (this repo only) and measure live compliance + ccusage before wider rollout. rtk stays global default (harmless; just rarely fires here).
+
+**CORROBORATION 2026-06-23 (live `ctx_execute`, 6 transcripts, bulky≥200tok):** category share of bulky output — **Read 62.1% · Bash:other 16.6% · Web 11.9% · Grep/Glob 5.8% · MCP 2.7% · Bash:git (rtk-able) 0.8%**. → **rtk addresses 0.8%, rtk-miss = 99.2%.** Hard-confirms §7d: the real token-killer for this workload = context-mode (Read→ctx_execute_file, Web→ctx_fetch, Grep→ctx_execute), not rtk. (call = first live compliance seed; ctx_execute verified working in CC.)

@@ -41,3 +41,14 @@
 - อย่าถือ portaw เป็นฐานที่ต้องใช้ — salvage แนวคิดได้ แต่ของบางส่วนแทนได้ด้วย tool สำเร็จรูป (เช่น ICM ทำ memory + host-wiring เองได้).
 
 > หลัก #1 ใช้กับไฟล์นี้ด้วย: ผิด/ล้าสมัย → แก้.
+
+<!-- paw:ctx-routing-test start (STATUS §14.5 live-test instrument — kill = ลบ block นี้ + .mcp.json) -->
+## context-mode routing (repo นี้, live-test)
+
+`.mcp.json` เปิด `context-mode` (ctx_* tools) ใน repo นี้ จ่าย ~7.9k tok/session → **ต้อง route จริงถึงคุ้ม** (replay: 0% compliance = net-negative). กติกา:
+- **bulky shell output** (git log/diff, grep/rg, ls -R, build/test logs, cat ไฟล์ใหญ่) → `ctx_execute` / `ctx_execute_file` (Think-in-Code: log เฉพาะคำตอบ).
+- **doc/web/ไฟล์ใหญ่ที่ต้องค้น** → `ctx_fetch_and_index` + `ctx_search` (FTS5 lossless; query แบบ keyword ตรง doc-vocab → recall 100%).
+- **ข้าม** (route ไม่คุ้ม): output < ~200 tok · read-to-edit (ต้องการ verbatim bytes) · git_diff สั้น. ของเล็กใช้ Bash/Read ปกติ.
+- semantic memory = ICM (ไม่ใช่ ctx_search; complementary). guard = nah (survives).
+<!-- paw:ctx-routing-test end -->
+
