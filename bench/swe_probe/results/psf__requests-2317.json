@@ -1,0 +1,12 @@
+{
+  "instance_id": "psf__requests-2317",
+  "arms": {
+    "deepseek-solo": {
+      "deepseek_usage": {
+        "input_tokens": 5690,
+        "output_tokens": 979
+      },
+      "deepseek_usd": 0.001071
+    }
+  }
+}

@@ -273,3 +273,140 @@ arc: ECC collision (§11) → FORK resolved (§12) → drilled #4 timeline + R2 
 - `.mcp.json` **hardcode path `C:\Users\VVeb1250\...`** = machine-specific, ยัง **ไม่ portable** (portable version ต้อง resolve dynamic — defer).
 - **FORK ledger impact** (§13.2): context-mode = candidate **② dependency** สำหรับ compress+session-mem+cross-host → หด scope ① portaw subtree ลงอีก.
 - ELv2 license-key: recheck เมื่อ version bump เพิ่ม key enforcement. bus-factor 1 (solo Mert Koseoglu) → mitigant: fork free-state ได้.
+
+---
+
+## 15. 🤝 HANDOFF 2026-06-23 (#2) — live-test wired + H3 reshaped (อ่านก่อน resume)
+
+arc: ยืนยัน context-mode LIVE → วัด compliance 0% (routing ไม่เคย wire) → ใส่ nudge → H3 reuse-scout (commodity!) → quality-harness gaps Q1-Q7.
+
+### 15.1 ✅ ทำเสร็จ session นี้
+- **context-mode LIVE ยืนยัน** — restart แล้ว, ctx_* 11 tools โหลด, repo นี้จ่าย +7917 tok/session จริง. ctx_execute **รันได้สด** (ctx_execute_file = sandbox-confined to project root, นอก project ต้อง native Read).
+- **replay re-run (6 transcripts): compliance 0%** (0 ctx_ / 173 bulky). root cause = routing layer ไม่เคย wire (§14.3 เลือก no-hooks → ไม่มี nudge เลย).
+- **🔧 routing nudge wired** — marked block `<!-- paw:ctx-routing-test -->` ใน project [CLAUDE.md](../CLAUDE.md). soft instruction (bulky→ctx_execute · doc→ctx_search · skip <200tok/read-to-edit). kill = ลบ block + `.mcp.json`.
+- **compliance collection STARTED** — 2 ctx_ call จริง session นี้ (ไม่ใช่เลขลม).
+- **category analysis (live ctx_execute, BENCH §7d corroboration):** bulky output share = **Read 62.1% · Bash:other 16.6% · Web 11.9% · Grep 5.8% · MCP 2.7% · git(rtk-able) 0.8%** → rtk แตะ 0.8%, **rtk-miss 99.2%**. context-mode = token-killer ตัวจริงของ workload นี้.
+
+### 15.2 🔱 H3 RESHAPED (reuse-scout — supersede §10 G5 + #9 patcher-salvage lock)
+- **`paw link` = commodity แล้ว.** reuse: **add-mcp**(Neon, MCP install ข้าม host 1cmd) · **rulesync**/**agent-rules-sync**(rules+skills+MCP sync) · **1mcp**(aggregate N→1, ลด N1 tax) · APM · `.mcpb`. → **REJECT rebuild portaw patcher** (= portaw รอบ 4).
+- **paw link หดเหลือ thin orchestrator:** bundle curation (`sets.json`) + delegate per-tool installer + glue (ICM/nah/ctx routing) ที่ไม่มีใครทำ.
+- **template = codegraph-link** (grounded: hookless skill, verify→delegate `codegraph install` (ไม่ hand-edit config)→managed marker-block→unlink; multi-host `-t codex,gemini` ก็ delegate).
+
+### 15.3 ⏳ DECISIONS — 1 locked, 1 PARKED
+- **enforcement A vs B = A-first (locked).** A=managed-block (0-tax, cross-host uniform, soft) · B=hooks (enforce, +tax, **ไม่ port cross-host**, Bash-race rtk). → block = primary เสมอ (กลไกเดียว uniform ข้าม host); hook = CC-local booster เฉพาะถ้า A <30%. **ห้ามใส่ B ตอนนี้ = ปนเปื้อนการวัด A.**
+- **delivery skill vs CLI = PARKED** (user ยังคิดไม่ออก). ผม lean **skill** (codegraph-link clone): reshape delegate config→installer แล้ว → ฆ่าเหตุผล CLI (atomic patch); เหลือเหตุผล CLI เดียว = exec off-CC headless, แต่ paw=personal+CC-primary → cross-host = output(AGENTS.md) ไม่ใช่ exec. CLI = YAGNI. caveat: skill ต้องมี **manifest จิ๋ว** (`.paw/linked.json`) กัน partial-failure. **OPEN thread: off-CC need?** (teammate-agent self-link ตอน spawn = เหตุผล CLI เดียวที่อาจโผล่จาก team-axis §12).
+
+### 15.4 🆕 quality-harness gaps Q1-Q7 (จาก concept research — แกนใหม่ ไม่ซ้ำ H1-H9/G1-G7)
+งาน paw ทั้งหมด = แกน "context-budget" แกนเดียวจาก 4-axis model (action-space/observation/recovery/context-budget). ที่เหลือยังไม่แตะ:
+- **Q1 🔴 วัด proxy ไม่วัด objective** — bench=token-NET ล้วน; concept metric = cost-per-**SUCCESS** + completion-rate + pass@1/3. lossy compress/recall อาจตัด completion = มองไม่เห็น. **keep/kill ปัจจุบัน (compliance%) ก็ยัง proxy** — gate จริง = success-rate hold @ cost ต่ำลง.
+- **Q2** ไม่มี observation-shaping (status/summary/next/artifacts envelope). **Q3** ไม่มี action-space overlap audit (search ซ้ำ 4: Grep/ctx/ICM/codegraph; >30 tools degrade). **Q4** error-recovery contract=0. **Q5** ไม่มี compaction/offload (STATUS.md=มนุษย์ทำแทน). **Q6** "อย่าซ่อน mistake" ขัด lossy-compress → carve-out ห้ามบีบ error obs. **Q7** ไม่มี runtime observability.
+- reuse-ref ปิด Q1-Q7: [`ai-boost/awesome-harness-engineering`](https://github.com/ai-boost/awesome-harness-engineering).
+
+### 15.5 ⏭️ TEST QUEUE next session (resume จากตรงนี้)
+1. **[หลัก] compliance re-measure** — หลังทำงานจริง **3-5 session** (nudge active) → `py bench/_session_replay.py` → compliance% · gate: **≥50% keep · <30% kill** (`rm .mcp.json`+block). ⚠️ ต้องมี real work ให้เกิด bulky ops; ของ replay นับเฉพาะ transcript ที่ flush แล้ว (session ปัจจุบันยังไม่เข้า).
+2. **ccusage $ delta** — `ccusage session` → NET จริง (proxy replay model ไว้ ~76k @ 50% compliance).
+3. **(parked) H3 delivery** decide skill/CLI → เขียน paw link draft.
+4. **(backlog, load-bearing) Q1 success-harness** จิ๋ว — N task จริง, with/without bundle, วัด completion+cost (ตัดสิน bundle ช่วยจริง ไม่ใช่ดู-ถูก).
+5. **(backlog) vet** add-mcp/rulesync/1mcp (substance>stars, host-coverage, wire-hooks?) ก่อน lock H3-thin.
+
+**env unchanged** (§13.3): ICM 0.10.53 · ccusage 20.0.14 · iii.exe PATH · context-mode MCP project-scoped LIVE · tools rtk/nah hook · bench harnesses ใน `bench/`.
+
+---
+
+## 16. 🤝 HANDOFF 2026-06-23 (#3) — EXISTENTIAL probe harness built + first (messy) round (อ่านก่อน resume)
+
+arc: เลือกอุด #1 EXISTENTIAL (team-vs-solo cost/quality, §13.3#2) → ทดสอบ Opus+Sonnet (same-vendor=R2a=solo ชนะ, อ่อน) → user เปิด **DeepSeek** (มี API key) = cross-vendor workhorse จริง → สร้าง measurement harness → gold-validate ผ่าน → ยิงรอบแรก flask-4045 (all-fail แต่ diagnose ครบ).
+
+### 16.1 สิ่งที่ทดสอบ (ไม่ใช่ agent-team concept!)
+**ไม่ได้** สร้าง agent-team framework (ไม่มี orchestration/shared-brain/coordination). "team" = **Claude ขับมือ**: plan → DeepSeek API → review. ตั้งใจ strip team-engineering (literature: scaffolding ≠ bottleneck) → เทสเฉพาะ **economic hypothesis: cheap-model(DeepSeek v4-flash) + smart-plan(Claude) → match Claude-solo ที่ถูกกว่าไหม.** ผ่าน = ค่อยตัดสิน fork ③ (Agyn/MASAI).
+
+### 16.2 harness ที่สร้าง — `bench/swe_probe/` (7 ไฟล์, committed? NO — uncommitted)
+- `pull.py` requests-only oracle puller (HF datasets-server REST + GitHub raw @ base_commit) — **เลี่ยง `datasets`** (py3.14 ไม่มี wheel). `deepseek.py` Anthropic-compat caller (`api.deepseek.com/anthropic` · `deepseek-v4-flash` · x-api-key). `run.py` orchestrator (pull/deepseek-solo/team-impl/claude-patch/eval/claude-usage/report + ledger). `config.py` (endpoints/price 0.14|0.28 per M/paths/WSL-bridge). `wsl_eval.sh`+`wsl_setup.sh` swebench scorer. `README.md` runbook.
+- **design:** oracle retrieval (เฉพาะไฟล์ที่ gold แตะ) · single-shot (no agentic loop) · 3 arm · objective score = swebench `resolved` (อุด #2).
+
+### 16.3 blockers แก้แล้ว (สำคัญ — กัน rediscover)
+- **py3.14 = ไม่มี wheel `datasets`/`swebench`** → puller ใช้ requests; scorer ไป WSL.
+- **swebench `import resource` = Unix-only → Windows native รันไม่ได้เลย** (import-time, ทุกคำสั่ง). uv-venv 3.12 บน Windows ก็ตาย (`No module named pip` → `uv pip`; แต่ resource ยัง block). **แก้: scorer รันใน WSL Ubuntu** (py3.12.3, `resource` มี, ต่อ Docker Desktop = `docker_ok`). `run.py` auto-detect Windows → `wsl -d Ubuntu bash wsl_eval.sh <id> <arm>` (path-translate `/mnt/e`). swebench ลง WSL ผ่าน `pip install --user --break-system-packages`.
+- **DeepSeek caveat #3 ของผมล้าสมัย:** DeepSeek มี **Anthropic-compat endpoint** แล้ว (`/anthropic`) = เสียบ base-url แบบ GLM ได้ (ไม่ต้อง cc-router bridge). v4-flash $0.14/$0.28 per M (~1-2 orders ถูกกว่า Claude). `deepseek-chat/reasoner` deprecate **2026-07-24** → ใช้ v4-flash.
+
+### 16.4 ✅ PROVEN
+- pipeline end-to-end: pull → 3 arm → DeepSeek call ($0.001-0.002/call) → swebench docker score → per-test diagnostic. **Win+WSL+Docker เวิคเต็ม.**
+- **gold-validate gate ทำงาน:** `psf/requests` = **non-hermetic (ต้อง httpbin)** → gold FAIL ภายใต้ container network-isolation (hermetic test ผ่าน, network test ตาย) = gate จับ bad instance. สลับ → `flask` (in-process test_client, hermetic). **flask-4045 gold = PASS** (resolved 1/1, env เชื่อได้). [ICM `01KVT3M0...`]
+
+### 16.5 🔬 รอบแรก flask-4045 — all unresolved แต่ diagnose ครบ (ยังไม่ตอบ existential)
+| arm | applied | resolved | สาเหตุ |
+|---|---|---|---|
+| claude-solo | ✓ | ✗ | ผ่าน name-check (`test_dotted_name_not_allowed`) แต่ตก `test_route_decorator_custom_endpoint_with_dots`. **flask-4045 = fix 2 จุด** (name+endpoint); ผม under-solve จาก problem statement |
+| team | ✓ | ✗ | DeepSeek ทำตาม plan ถูก แต่ **plan ผมระบุแค่ name** → team สืบทอด plan ไม่ครบ. = **team quality bounded by plan** (garbage-in) |
+| deepseek-solo | ✗ | — | diff ไม่ apply (`assert "." not in name` + @@ line-number ผิด/format) → score ไม่ได้ = unfair |
+
+DeepSeek spend รวม ~$0.003 (เศษ, ตามคาด). claude_tok ยังไม่ record (manual ccusage skip).
+
+### 16.6 🔴 2 FIX ก่อนได้คำตอบสะอาด (next session)
+1. **robust patch-apply (priority)** — ให้ DeepSeek output **ทั้งไฟล์** → คำนวณ diff เอง local (ฆ่า apply-fail confound; ตอนนี้ deepseek-solo แพ้เพราะ format ไม่ใช่ logic). [ICM `01KVT4BD...`]
+2. **instance สะอาด/solve ครบ** — single-location จริง (`flask-4992` pulled แล้ว) หรือ solve flask-4045 ครบ 2 จุดทุก arm.
+- ⚠️ **oracle บัง quota-advantage:** claude-solo กับ team อ่าน oracle เท่ากัน → team แทบไม่ประหยัด Claude-quota ใน oracle mode. **cost axis ต้อง agentic mode หรือให้ team-Claude plan จาก reduced-context.** (quality axis วัด oracle ได้)
+- ⚠️ **contamination:** flask public + Claude/DeepSeek เคยเห็น → absolute pass มองโลกสวย; team-vs-solo **delta** ยังพออ่าน.
+
+### 16.7 env state (resume)
+- `$env:DEEPSEEK_API_KEY` = SET. WSL Ubuntu + swebench ready (`wsl bash /mnt/e/portable-harness/bench/swe_probe/wsl_setup.sh` idempotent). Docker Desktop + flask env-image cached (eval ครั้งหลัง ~1-2min). candidates: `pallets__flask-4045` (gold-validated, 3 arm patch อยู่ใน preds/) · `pallets__flask-4992` (pulled, ยังไม่ทำ).
+- run: `py -m bench.swe_probe.run report` ดู scorecard. README = runbook เต็ม.
+- ICM lessons: `01KVT3M0...` (requests non-hermetic) · `01KVT4BD...` (model-diff apply-fail).
+
+### 16.8 FORK ledger impact (§13.2)
+probe นี้ = วัดค่า fork ③ (agent-team) **ก่อน** เลือก Agyn/MASAI. ผลตอนนี้ = neutral (instrument พร้อม, economic signal ยังไม่มี). DeepSeek = ยืนยัน candidate ② (workhorse cross-vendor). **ยังไม่ commit สร้าง team framework** จนกว่า economics ผ่าน — ตรง STANDING WARNING (build บาง).
+
+---
+
+## 17. 🤝 HANDOFF 2026-06-24 — ctx-mode gate folded + §16.6 fixes done + first CLEAN probe round (อ่านก่อน resume)
+
+arc: ถาม "harness เหลืออะไรก่อน swe-bench" → ctx-mode keep/kill gate วัดได้ 8% → user: 8% = habit confound (Claude reflex ไม่หยิบ ctx_) → ตัดสิน **fold ctx-mode test เข้า swe-bench work** (best-case arena) → cross-host check (DeepSeek?) → **bench-now-wire-later** → §16.6 Fix 1+2 ทำเสร็จ → **flask-4992 รอบสะอาดแรก: team ✓ = claude-solo ✓, deepseek-solo ✗**.
+
+### 17.1 ctx-mode gate — FOLDED, not killed
+- **replay re-run (10 transcripts): LIVE compliance = 8%** (20 ctx_* / 219 eligible bulky; up จาก 0% baseline). NET_A model = A ชนะ 7/10, routed≈0 → **net-negative จริงตอนนี้** (จ่าย 7.9k/session, cut ~0).
+- **user diagnosis: 8% = habit** (ctx-mode เพิ่ง reset session ก่อน, Claude ติด Bash/Read reflex) — ไม่ใช่ tool อ่อน. = indict **soft-enforcement (A)**, ไม่ใช่ context-mode.
+- **🔑 hook-B booster (§15.3 trigger A<30%) = REJECTED on analysis.** category share (§15.1): **Read 62% · Bash-other 17% · Web 12% · Grep 6% · git 0.8%**. hook PreToolUse[Bash] บีบได้แค่ Bash subset (~17%) + race global rtk hook. **Read 62% บีบด้วย hook ไม่ได้** (read-to-edit ต้องการ verbatim; hook แยก read-to-analyze vs read-to-edit ไม่ออก). → แม้ enforce Bash เต็ม ก็ ~17% < 30%. **machinery ช่วยไม่ได้.**
+- **lever จริง = bulky-Read-to-analyze → ctx_execute** (run script, log answer) แต่ = instruction-driven = soft = habit-bound. circular. **ไม่มี portable hard-enforce** (ชน #8 cross-host).
+- **DECISION: ไม่ kill บน 8% (confounded), ไม่ build hook (ผ่าน gate ไม่ได้). → fold ctx-mode test เข้า swe-bench work** (Read/log/diff-heavy = ctx-mode best case). route ctx_ ด้วยมือตอนทำ swe → 3-5 session → replay+ccusage → **terminal keep/kill**. best-case fail = kill เด็ดขาด; clear = keep.
+- caveat: 7.9k/session tax ยัง bleed ระหว่าง swe sessions (= ราคาของ clean read).
+
+### 17.2 cross-host verdict (user ถาม: harness ใช้กับ AI ทุกตัว/รายเดือน/DeepSeek ได้มั้ย)
+**harness วันนี้ = CC-only. cross-host = GOAL ยังไม่จริง.** matrix:
+| component | mechanism | portable | DeepSeek |
+|---|---|---|---|
+| ICM (brain) | CLI | ✅ any shell | ✅ ถ้า runtime shell ได้ |
+| context-mode (ctx_*) | MCP | ✅ any MCP-client host | ⚠️ ต้องมี MCP-capable runtime |
+| rtk (token) | CC Bash-hook | ❌ hook=CC-only | ❌ |
+| nah (guard) | CC PreToolUse | ❌ CC-only enforce | ❌ |
+| routing block | CLAUDE.md | ⚠️ → AGENTS.md via rulesync | n/a |
+- **DeepSeek วันนี้ได้ harness = 0.** §16 probe เรียก bare API single-shot (no MCP/loop). "team" = **Claude+harness ขับ bare DeepSeek**, ไม่ใช่ DeepSeek-with-harness.
+- **monthly subs (Claude/Codex/Gemini chat)** = ไม่มี MCP/hook/CLI surface + programmatic seat = **ban risk** (§11 A3) → interactive-by-hand only. **DeepSeek = metered API = automate ปลอดภัย.**
+- **DECISION (user): bench-now-wire-later.** ไม่ port harness ก่อนรู้ว่า team คุ้ม. ถ้าจะให้ DeepSeek กิน harness → MCP-capable runtime (Cline/Codex/custom loop wire ctx_/ICM) = build รอ economics ผ่านก่อน.
+
+### 17.3 ✅ §16.6 FIXES ทำเสร็จ (uncommitted, ใน bench/swe_probe/)
+- **Fix 1 robust patch-apply** — `deepseek.py`: model output เปลี่ยนจาก unified-diff → **whole-file** ใน `@@@FILE <path>`/`@@@ENDFILE` markers (+ `parse_files`, `_strip_fence`). `run.py`: `_file_diff` (difflib + git header, handle new-file via /dev/null) + `_files_to_patch` (diff vs `bundle.oracle_files`) + `_deepseek_arm` shared. → **diff คำนวณ local = ฆ่า apply-fail confound** (วัด logic ไม่ใช่ diff-arithmetic). validated: parse→diff→`git apply --check rc:0` บน real content. claude-solo ก็ใช้ machinery เดียวกัน (fair: ทุก arm clean-apply เท่ากัน).
+- **Fix 2 clean instance** — `pallets__flask-4992` (1 file 1 method: `Config.from_file` + `text: bool` param → `open(filename, "r" if text else "rb")`). gold-validate = **PASS** (hermetic in-process test_client, env เชื่อได้). single-location จริง (ตรงข้าม 4045 ที่ fix 2 จุด).
+
+### 17.4 🔬 flask-4992 — รอบสะอาดแรก (อุด §16.5 messy round)
+| arm | resolved | กลไก |
+|---|---|---|
+| claude-solo | ✓ | Claude เขียน patch เต็ม (ตรง gold API) |
+| **team** (Claude plan + DeepSeek $0.00104) | **✓** | plan ระบุ `text` param เป๊ะ → DeepSeek ทำตาม = gold API |
+| deepseek-solo (no plan, $0.00131) | **✗** | DeepSeek คิด `mode: str = "r"` เอง — logic ถูกแต่ **interface ผิด** (gold ใช้ `text`); test เรียก `text=False` → TypeError |
+
+- **🔑 signal: team-value = planner inject spec-detail ที่ cheap-model เดาเองไม่ได้.** deepseek-solo ไม่ได้ fail เพราะโง่ — fail เพราะเดา interface ผิด (problem statement ไม่ได้บอก exact API). plan (Claude) พา exact spec. = กลไก team ที่แยกออกมาชัด.
+- DeepSeek spend รอบนี้ ~$0.0024 รวม (เศษ). whole-file→local-diff = **ทุก arm apply ผ่าน** (ไม่มี unfair apply-fail เหมือนรอบ 4045).
+
+### 17.5 🔴 COST AXIS ยังไม่วัด (สำคัญ — quality axis เท่านั้นที่ clean)
+- `claude_tok = 0` ทุก arm = **ยังไม่ record** (ไม่ปลอม). oracle single-shot mode: claude-solo กับ team **อ่าน oracle เท่ากัน**, Claude output ต่าง = patch(solo) vs plan(team) ขนาดใกล้กัน → **quota advantage marginal/วัดไม่ออกใน oracle mode** (§16.6 caveat ยืนยัน).
+- **cost saving จริงต้อง AGENTIC mode** — claude-solo = หลาย tool-call turn (แพง) vs team = Claude plan ครั้งเดียว + DeepSeek รับ agentic loop. นั่นคือที่ quota-delta จะโผล่. oracle mode วัดได้แค่ **quality axis** (ตอนนี้: team ≥ deepseek-solo, = claude-solo @ N=1).
+- contamination caveat: flask public, ทั้ง 2 model เคยเห็น → absolute pass มองโลกสวย; **team-vs-solo delta** ยังอ่านได้.
+
+### 17.6 ⏭️ NEXT (resume จากตรงนี้)
+1. **N เพิ่ม (quality axis)** — flask-4992 = N=1 win. ต้อง 5-10 instance (hermetic, gold-validate ก่อน) ดู team≥solo & team>deepseek-solo hold มั้ย. CANDIDATES ขยาย (pallets/* hermetic).
+2. **🔴 cost axis = agentic mode** — ออกแบบ arm ที่ claude-solo loop จริง (retrieval+retry) vs team (Claude plan→DeepSeek loop). นี่คือที่ตอบ EXISTENTIAL #1 จริง (oracle mode ตอบไม่ได้). record claude_tok ผ่าน `claude-usage` + `ccusage session`.
+3. **ctx-mode compliance** — หลัง 3-5 swe session (route ctx_ ด้วยมือ) → `py bench/_session_replay.py` + `ccusage` → terminal keep/kill (§17.1).
+4. **commit** bench/swe_probe/ (ยัง uncommitted ตั้งแต่ §16) + STATUS นี้.
+5. **(parked)** H3 paw link skill/CLI · DeepSeek+harness runtime wiring (รอ economics ผ่าน §17.2).
+
+**env unchanged:** DEEPSEEK_API_KEY set · WSL Ubuntu+swebench+Docker ready (flask env-image cached, eval ~1-2min) · ctx-mode MCP LIVE (+7.9k/session) · ICM/rtk/nah live · candidates flask-4045(2-spot, messy) + flask-4992(clean, 3-arm done) gold-validated.

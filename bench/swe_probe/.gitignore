@@ -1,0 +1,5 @@
+# generated / heavy — regenerable, not source
+.swebench-venv/
+__pycache__/
+*.pyc
+eval_out/

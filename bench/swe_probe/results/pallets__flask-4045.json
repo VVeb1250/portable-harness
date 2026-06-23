@@ -1,0 +1,23 @@
+{
+  "instance_id": "pallets__flask-4045",
+  "arms": {
+    "deepseek-solo": {
+      "deepseek_usage": {
+        "input_tokens": 4939,
+        "output_tokens": 5129
+      },
+      "deepseek_usd": 0.002128
+    },
+    "team": {
+      "deepseek_usage": {
+        "input_tokens": 238,
+        "output_tokens": 625
+      },
+      "deepseek_usd": 0.000208,
+      "resolved": false
+    },
+    "claude-solo": {
+      "resolved": false
+    }
+  }
+}
