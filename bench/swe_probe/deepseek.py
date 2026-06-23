@@ -72,7 +72,7 @@ def build_prompt(problem: str, oracle_files: dict[str, str], plan: str | None) -
     return "\n\n".join(blocks)
 
 
-def call(prompt: str, max_tokens: int = 8000) -> tuple[str, dict]:
+def call(prompt: str, max_tokens: int = 16000) -> tuple[str, dict]:
     """Return (text, usage). usage = {input_tokens, output_tokens}."""
     r = requests.post(
         f"{config.DEEPSEEK_BASE}/v1/messages",

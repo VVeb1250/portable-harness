@@ -1,18 +1,25 @@
-# Plan — pallets__flask-4992
+# Plan — pallets__flask-5063
 
-**File:** `src/flask/config.py`, method `Config.from_file`.
+**File:** `src/flask/cli.py`, function `routes_command` (the `flask routes` CLI).
 
-**Goal:** let `from_file` open the target file in binary mode so loaders that
-require it (e.g. `tomllib.load`, which rejects text-mode handles) can be used.
+**Goal:** show which subdomain (or host) each route is registered under, so
+`flask routes` is useful for apps that use `SERVER_NAME` subdomains or
+host matching.
 
-**Changes (only this method):**
-1. Add a new keyword parameter `text: bool = True` to the signature, placed
-   right after `silent: bool = False,`.
-2. Where the file is opened, select the mode from `text`:
-   replace `with open(filename) as f:` with
-   `with open(filename, "r" if text else "rb") as f:`.
-3. (Doc) add a `:param text:` line describing it opens the file in text or
-   binary mode; keep the existing behavior the default (text=True).
+**Changes (this function + its imports/options):**
+1. Detect domain mode: `host_matching = current_app.url_map.host_matching`,
+   and `has_domain = any(rule.host if host_matching else rule.subdomain
+   for rule in rules)`. Only add the domain column when `has_domain` is true.
+2. The domain column value per rule is `rule.host` when host_matching else
+   `rule.subdomain`, falling back to `""`. Column header is `"Host"` when
+   host_matching else `"Subdomain"`.
+3. Add `"domain"` to the `--sort` choices and allow sorting by the domain
+   column. Build the table as a list of rows (each a list of cells), sort
+   rows by the chosen column index, fall back to no sort if the sort name
+   isn't a column.
+4. Keep the existing aligned-table rendering: a header row, a dashes
+   separator row, columns left-justified and padded to the widest cell,
+   joined by two spaces.
 
-Do not change any other method or file. Preserve all existing behavior when
-`text` is left at its default.
+Don't change other functions. Preserve existing columns (Endpoint, Methods,
+Rule) and default sort (endpoint).

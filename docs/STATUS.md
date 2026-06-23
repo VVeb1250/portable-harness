@@ -397,13 +397,26 @@ arc: ถาม "harness เหลืออะไรก่อน swe-bench" → c
 - **🔑 signal: team-value = planner inject spec-detail ที่ cheap-model เดาเองไม่ได้.** deepseek-solo ไม่ได้ fail เพราะโง่ — fail เพราะเดา interface ผิด (problem statement ไม่ได้บอก exact API). plan (Claude) พา exact spec. = กลไก team ที่แยกออกมาชัด.
 - DeepSeek spend รอบนี้ ~$0.0024 รวม (เศษ). whole-file→local-diff = **ทุก arm apply ผ่าน** (ไม่มี unfair apply-fail เหมือนรอบ 4045).
 
+### 17.4b 🔬 flask-5063 — N=2 (harder instance, signal HOLDS)
+2nd data point: `pallets__flask-5063` (1 file `cli.py` แต่ ~40-line rewrite ของ `routes_command` — เพิ่ม Host/Subdomain column ใน `flask routes`). gold-validate PASS.
+| arm | resolved | กลไก |
+|---|---|---|
+| claude-solo | ✓ | Claude rewrite เต็ม (ตรง gold) |
+| **team** (Claude plan + DeepSeek $0.00298) | **✓** | plan พา detection logic (host_matching/has_domain/domain-sort); DeepSeek วาง column ผิดตำแหน่ง (domain-first vs gold's before-Rule) แต่ **ยัง PASS** |
+| deepseek-solo (no plan, $0.00256) | **✗** | คิด `server_name` FQDN semantics เอง + Domain column always-on (ไม่มี has_domain) + ไม่ได้เพิ่ม `domain` ใน `--sort` choices |
+
+- **honest correction:** ผม predict ว่า team จะ fail เพราะ column-order ผิด — **ผิด, team PASS.** test เช็ค subdomain value ปรากฏ (ไม่ strict column position). mental model ผมต่อ test เข้มเกินจริง.
+- **🟢 N=2 summary: claude-solo ✓✓ · team ✓✓ · deepseek-solo ✗✗.** team-value (plan carries spec cheap-model เดาไม่ได้) **hold ทั้ง easy(4992) + harder(5063)**. delta team-vs-deepseek-solo ชัด 2/2.
+- **⚠️ design tension เจอ: whole-file output ไม่ scale กับไฟล์ใหญ่.** cli.py ~1050 line → DeepSeek emit ทั้งไฟล์ชน max_tokens=8000 → truncate → 0 @@@FILE blocks. **แก้ชั่วคราว: bump max_tokens 8000→16000** (v4-flash emit ได้ 9-10k tok, ยืนยันไม่ hard-cap 8k). **proper fix (backlog): search/replace blocks** (Aider-style — output เฉพาะ region ที่แก้, scale ทุกขนาดไฟล์ + ยัง robust apply). 4992 เล็กพอ fit 8k → ไม่ต้อง re-run.
+- review-step protocol (lock): **review = light** (apply-check + sanity, **ไม่ rewrite** สิ่งที่ plan ระบุไม่ครบ) — ไม่งั้น team = claude-solo trivially, วัด team-value ไม่ได้.
+
 ### 17.5 🔴 COST AXIS ยังไม่วัด (สำคัญ — quality axis เท่านั้นที่ clean)
 - `claude_tok = 0` ทุก arm = **ยังไม่ record** (ไม่ปลอม). oracle single-shot mode: claude-solo กับ team **อ่าน oracle เท่ากัน**, Claude output ต่าง = patch(solo) vs plan(team) ขนาดใกล้กัน → **quota advantage marginal/วัดไม่ออกใน oracle mode** (§16.6 caveat ยืนยัน).
 - **cost saving จริงต้อง AGENTIC mode** — claude-solo = หลาย tool-call turn (แพง) vs team = Claude plan ครั้งเดียว + DeepSeek รับ agentic loop. นั่นคือที่ quota-delta จะโผล่. oracle mode วัดได้แค่ **quality axis** (ตอนนี้: team ≥ deepseek-solo, = claude-solo @ N=1).
 - contamination caveat: flask public, ทั้ง 2 model เคยเห็น → absolute pass มองโลกสวย; **team-vs-solo delta** ยังอ่านได้.
 
 ### 17.6 ⏭️ NEXT (resume จากตรงนี้)
-1. **N เพิ่ม (quality axis)** — flask-4992 = N=1 win. ต้อง 5-10 instance (hermetic, gold-validate ก่อน) ดู team≥solo & team>deepseek-solo hold มั้ย. CANDIDATES ขยาย (pallets/* hermetic).
+1. **N เพิ่ม (quality axis)** — ✅ N=2 done (4992+5063, signal holds §17.4b). flask Lite หมดแล้ว (เหลือ 4045 messy). ต้องขยายไป repo hermetic อื่น (pylint/sqlfluff/sympy/sphinx) → N=5-10. **+ implement search/replace blocks ก่อน** (whole-file ไม่ scale ไฟล์ใหญ่, §17.4b) — ไม่งั้นไฟล์ใหญ่ชน max_tokens.
 2. **🔴 cost axis = agentic mode** — ออกแบบ arm ที่ claude-solo loop จริง (retrieval+retry) vs team (Claude plan→DeepSeek loop). นี่คือที่ตอบ EXISTENTIAL #1 จริง (oracle mode ตอบไม่ได้). record claude_tok ผ่าน `claude-usage` + `ccusage session`.
 3. **ctx-mode compliance** — หลัง 3-5 swe session (route ctx_ ด้วยมือ) → `py bench/_session_replay.py` + `ccusage` → terminal keep/kill (§17.1).
 4. **commit** bench/swe_probe/ (ยัง uncommitted ตั้งแต่ §16) + STATUS นี้.
