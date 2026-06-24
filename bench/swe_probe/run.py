@@ -26,7 +26,7 @@ import json
 import subprocess
 import sys
 
-from . import config, deepseek, pull, tokens
+from . import codex, config, deepseek, pull, tokens
 
 
 # --- ledger ----------------------------------------------------------------
@@ -174,6 +174,33 @@ def _deepseek_arm(iid: str, arm: str, plan: str | None):
     print(f"{arm} {iid}: {usage} (${deepseek.cost_usd(usage):.5f}) -> "
           f"{n_edits} edit(s) over {len(edits)} file(s), patch {len(patch)} bytes{note}")
     return patch
+
+
+def _codex_arm(iid: str, arm: str, plan: str | None = None,
+               feedback: str | None = None) -> str:
+    """Codex member: stage oracle files, let `codex exec` edit them, take the diff.
+
+    Unlike the DeepSeek arm, codex returns a real `git diff` (already scoped to
+    the gold-touched paths in codex.generate_patch), so there is no local
+    apply/diff step. Records the REAL token usage + agent turn count from the
+    codex event stream (the scarce-quota numbers for the cost axis, STATUS §F.4).
+    """
+    b = pull.load(iid)
+    patch, usage, turns = codex.generate_patch(
+        b["problem_statement"], b["oracle_files"], plan=plan, feedback=feedback)
+    (config.PREDS / f"{iid}__{arm}.diff").write_text(patch, encoding="utf-8")
+    ledger_update(iid, arm, codex_usage=usage, codex_turns=turns)
+    note = "" if patch.strip() else "  ⚠ empty diff (codex made no change)"
+    print(f"{arm} {iid}: in={usage.get('input_tokens', 0)} "
+          f"out={usage.get('output_tokens', 0)} "
+          f"reason={usage.get('reasoning_output_tokens', 0)} turns={turns}, "
+          f"patch {len(patch)} bytes{note}")
+    return patch
+
+
+def cmd_codex_solo(args):
+    _codex_arm(args.id, "codex-solo", plan=None)
+    print(f"  (codex patch saved — eval {args.id} codex-solo)")
 
 
 def cmd_deepseek_solo(args):
@@ -333,23 +360,41 @@ def cmd_feedback(args):
     print(_read_feedback(f"{args.id}__{args.arm}", args.arm, args.id))
 
 
+def _arm_cost(a: dict) -> tuple[int, int]:
+    """(output_tokens, turns) for an arm — the scarce, rate-limit-binding axis.
+
+    Total tokens are dominated by oracle-file input-reads (team≈solo at 1-shot),
+    so the cost signal lives in OUTPUT tokens + agent turns (STATUS §F.4). Pulls
+    from whichever seat the arm used: claude (tiktoken), codex (real usage), or
+    deepseek (api usage). Turns = team iterations or codex command-executions.
+    """
+    out = 0
+    out += a.get("claude_tokens", {}).get("output", 0)       # claude-solo / team plan
+    out += a.get("codex_usage", {}).get("output_tokens", 0)  # codex arms
+    out += a.get("deepseek_usage", {}).get("output_tokens", 0)  # deepseek-solo
+    turns = a.get("team_iters", 0) or a.get("codex_turns", 0)
+    return out, turns
+
+
 def cmd_report(args):
     rows = []
     for p in sorted(config.RESULTS.glob("*.json")):
         led = json.loads(p.read_text(encoding="utf-8"))
         for arm in config.ARMS:
-            a = led["arms"].get(arm, {})
-            ct = a.get("claude_tokens", {})
+            if arm not in led["arms"]:
+                continue
+            a = led["arms"][arm]
+            out_tok, turns = _arm_cost(a)
             rows.append((
                 led["instance_id"], arm,
                 "✓" if a.get("resolved") else ("✗" if "resolved" in a else "-"),
-                ct.get("input", 0) + ct.get("output", 0),
-                f"${a.get('deepseek_usd', 0):.5f}",
+                out_tok, turns or "-", f"${a.get('deepseek_usd', 0):.5f}",
             ))
-    print(f"{'instance':28} {'arm':14} {'pass':4} {'claude_tok':>10} {'ds_usd':>9}")
+    print(f"{'instance':28} {'arm':16} {'pass':4} {'out_tok':>8} {'turns':>5} {'ds_usd':>9}")
     for r in rows:
-        print(f"{r[0]:28} {r[1]:14} {r[2]:4} {r[3]:>10} {r[4]:>9}")
-    print("\nwin = team pass == claude-solo pass, with team claude_tok << claude-solo claude_tok")
+        print(f"{r[0]:28} {r[1]:16} {r[2]:4} {r[3]:>8} {str(r[4]):>5} {r[5]:>9}")
+    print("\nwin = team/codex pass == claude-solo pass, with far fewer OUTPUT tokens"
+          " + turns on the scarce premium seat (input-reads don't bind rate limits)")
 
 
 def main(argv=None):
@@ -360,6 +405,7 @@ def main(argv=None):
     s = sub.add_parser("pull"); s.add_argument("ids", nargs="+"); s.set_defaults(fn=cmd_pull)
     s = sub.add_parser("gold-validate"); s.add_argument("id"); s.set_defaults(fn=cmd_gold_validate)
     s = sub.add_parser("deepseek-solo"); s.add_argument("id"); s.set_defaults(fn=cmd_deepseek_solo)
+    s = sub.add_parser("codex-solo"); s.add_argument("id"); s.set_defaults(fn=cmd_codex_solo)
     s = sub.add_parser("team-impl"); s.add_argument("id"); s.add_argument("--plan", required=True); s.set_defaults(fn=cmd_team_impl)
     s = sub.add_parser("claude-patch"); s.add_argument("id"); s.add_argument("arm", choices=config.ARMS); s.add_argument("--file", required=True); s.set_defaults(fn=cmd_claude_patch)
     s = sub.add_parser("claude-usage"); s.add_argument("id"); s.add_argument("arm", choices=config.ARMS); s.add_argument("--in", dest="in_", type=int, required=True); s.add_argument("--out", type=int, required=True); s.set_defaults(fn=cmd_claude_usage)

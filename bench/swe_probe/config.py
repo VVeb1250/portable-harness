@@ -29,7 +29,7 @@ PRICE_IN = 0.14 / 1_000_000
 PRICE_OUT = 0.28 / 1_000_000
 
 # --- arms ------------------------------------------------------------------
-ARMS = ("claude-solo", "deepseek-solo", "team")
+ARMS = ("claude-solo", "deepseek-solo", "team", "codex-solo")
 
 # --- candidate instances (hermetic tests only; VERIFY via gold-validate) -----
 # NB: psf/requests instances are NON-hermetic (need httpbin) -> gold-validate

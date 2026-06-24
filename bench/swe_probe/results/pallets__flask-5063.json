@@ -25,6 +25,16 @@
         "input": 7983,
         "output": 312
       }
+    },
+    "codex-solo": {
+      "codex_usage": {
+        "input_tokens": 510007,
+        "cached_input_tokens": 369408,
+        "output_tokens": 4469,
+        "reasoning_output_tokens": 1073
+      },
+      "codex_turns": 17,
+      "resolved": true
     }
   }
 }
