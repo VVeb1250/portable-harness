@@ -16,6 +16,18 @@
 - **L0 scope = thin + team-shaped:** สร้างเฉพาะ shared-brain(ICM) + cross-host wiring + seat-router. general-harness breadth (skills/instincts) = ECC ทำแล้ว → wrap/ปล่อย.
 - **moat:** distro ตาย (ECC ทำแล้ว). moat จริง = personal cost/quota economics (ride seat) + agentic + shared-brain glue ที่ Fusion/ECC ไม่มี. L2-team value = **cost/quota ไม่ใช่ quality** (literature: solo ≥ team on quality compute-controlled).
 
+## A2. CONCEPT SCORECARD — เสา 3 ต้น อยู่ตรงไหน (audit 2026-06-24)
+
+> meta-verdict: **track ถูก (measure-before-build), เสายังเป็นโครง — โดยตั้งใจ.** เสา 1-3 ยังไม่ครบเพราะ **ยังไม่มี consumer จริง** (heterogeneous members ยังไม่เกิด → gate ด้วย economics §D). ⚠️ อย่า polish เสาก่อน #3 ตอบ = portaw รอบ 4 (build C-tier ที่ rent ได้).
+
+| เสา | แพลน (§A) | สถานะจริงวันนี้ | gap ที่เหลือ |
+|---|---|---|---|
+| **1 bundle** (↓tok+↑qual) | curated mcp+non-mcp net-win | ICM ✅net-pos · rtk ✅เล็ก(workload 0.8%) · nah ✅ · **ctx-mode ❌ +7.9k/compliance 8% = net-neg, folded** | "↓tok AND ↑qual พร้อมกัน" = **ยังไม่พิสูจน์**. qual empirical มีแค่ swe-probe sandbox ไม่ใช่ daily-use |
+| **2 router** (skills/mcp/seat) | smart routing | ctx-route = **static nudge ใน CLAUDE.md, compliance 8%** · skill-router = ECC(suggestion-only) · seat-router = planned | **ฉลาดขึ้น = ยัง**. hook-enforce REJECTED (Read บีบไม่ได้, ไม่มี portable hard-enforce, ชน #8) |
+| **3 memory** (two-tier shared) | shared blackboard + per-member private | ICM single-agent ✅ใช้จริง (governed recall + L3 overlay) | **shared-brain ข้าม member = ยังไม่มี** (ไม่มี member อื่น; DeepSeek=bare API ไม่อ่าน/เขียน ICM). per-member private tier = ไม่ build |
+
+→ unblock ถัดไป = **#3 agentic cost axis** (§F.3): ตอบ team<solo บน cost จริงไหม → ค่อยตัดสินว่า build เสา 1-3 ให้ครบคุ้มไหม. ตอนนี้ oracle-mode → quota-delta marginal → ตอบไม่ได้.
+
 ## B. 🔱 FORK / REUSE ledger — fork จริงน้อยมาก (mental model 5 ชั้น)
 
 | ชั้น | นิยาม | ตัว |
@@ -56,7 +68,7 @@
 **🔴 caveats (อย่าลืม):**
 - **cost axis ยังไม่วัด.** oracle mode → claude-solo+team อ่าน oracle เท่ากัน → quota-delta marginal. EXISTENTIAL ตอบไม่ได้จน **agentic mode** (claude-solo loop แพง vs team plan-once→DeepSeek loop). `claude_tok=0` ทุก arm (ไม่ปลอม).
 - N=2 เล็ก + flask public (contaminated) → absolute optimistic; **delta** อ่านได้.
-- **whole-file ไม่ scale ไฟล์ใหญ่** — cli.py 1050L ชน max_tokens 8000 → 0 parse. แก้ชั่วคราว bump 16000; proper fix = **search/replace blocks** (Aider-style) = backlog ก่อนขยาย N. ICM `01KVTVC8...`.
+- **whole-file ไม่ scale → FIXED ด้วย SEARCH/REPLACE blocks** (Aider-style, commit pending). โมเดลคืนเฉพาะ region ที่แก้ → apply locally (exact + trailing-ws flex + new-file) → diff locally (confound-kill เดิมคงอยู่). proof บน flask-5063 (cli.py 1050L ที่เคย stall): output **2457 tok vs 10626 whole-file = -77%**, 0 miss, fresh eval **resolved=True**. miss-tracking ใน ledger (`edit_misses`). ICM `01KVTVC8...` = closed.
 
 **ctx-mode gate = FOLDED (not killed):**
 - replay compliance = **8%** (20 ctx_/219 bulky). user: 8% = habit confound (Claude reflex Bash/Read) ไม่ใช่ tool อ่อน.
@@ -79,7 +91,7 @@
 
 ## F. OPEN / NEXT (resume จากตรงนี้)
 
-1. **search/replace blocks** ก่อนขยาย N (whole-file ไม่ scale, §D).
+1. ~~search/replace blocks~~ **DONE** (§D) — SR แทน whole-file, -77% output บนไฟล์ใหญ่, resolved hold. พร้อมขยาย N.
 2. **N=5-10 quality axis** — flask Lite หมด (เหลือ 4045 messy) → repo hermetic อื่น (pylint/sqlfluff/sympy/sphinx), gold-validate ก่อน. ดู team≥solo & team>deepseek-solo hold.
 3. **🔴 cost axis = agentic mode** — ออกแบบ arm claude-solo loop จริง vs team(plan→DeepSeek loop). = ที่ตอบ EXISTENTIAL จริง. record claude_tok + ccusage.
 4. **ctx-mode compliance** หลัง 3-5 swe session → replay+ccusage → keep/kill.

@@ -131,17 +131,40 @@ def cmd_gold_validate(args):
 
 
 def _deepseek_arm(iid: str, arm: str, plan: str | None):
-    """Shared: ask DeepSeek for whole files, diff locally, save + ledger."""
+    """Shared: ask DeepSeek for SEARCH/REPLACE edits, apply + diff locally, ledger.
+
+    The model returns only changed regions (scales to large files), we apply
+    them to the oracle base and diff locally so logic is scored, not diff
+    arithmetic (STATUS §16.6 #1 / §D search-replace fix).
+    """
     b = pull.load(iid)
-    files, usage = deepseek.generate_files(
+    edits, usage = deepseek.generate_edits(
         b["problem_statement"], b["oracle_files"], plan=plan)
-    patch = _files_to_patch(b, files)
+
+    new_files, misses = {}, []
+    for path, file_edits in edits.items():
+        base = b["oracle_files"].get(path, "")
+        try:
+            new_files[path] = deepseek.apply_edits(base, file_edits)
+        except deepseek.EditError as e:
+            misses.append(path)
+            print(f"  ⚠ {path}: SEARCH block not found in base; edit skipped\n"
+                  f"      {str(e)[:160]!r}")
+
+    patch = _files_to_patch(b, new_files)
     (config.PREDS / f"{iid}__{arm}.diff").write_text(patch, encoding="utf-8")
+    n_edits = sum(len(v) for v in edits.values())
     ledger_update(iid, arm,
-                  deepseek_usage=usage, deepseek_usd=round(deepseek.cost_usd(usage), 6))
-    note = "" if files else "  ⚠ model returned NO @@@FILE blocks (empty patch)"
+                  deepseek_usage=usage, deepseek_usd=round(deepseek.cost_usd(usage), 6),
+                  edit_misses=len(misses))
+    if not edits:
+        note = "  ⚠ model returned NO @@@FILE blocks (empty patch)"
+    elif misses:
+        note = f"  ⚠ {len(misses)} file(s) had unmatched SEARCH blocks"
+    else:
+        note = ""
     print(f"{arm} {iid}: {usage} (${deepseek.cost_usd(usage):.5f}) -> "
-          f"{len(files)} file(s) diffed, patch {len(patch)} bytes{note}")
+          f"{n_edits} edit(s) over {len(edits)} file(s), patch {len(patch)} bytes{note}")
     return patch
 
 

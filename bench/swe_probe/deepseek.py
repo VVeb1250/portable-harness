@@ -1,12 +1,19 @@
 """DeepSeek patch generation via the Anthropic-compatible endpoint.
 
 Single shot: given the problem statement + oracle file contents (+ optional
-plan from the Claude planner in the team arm), return the FULL updated content
-of each file it changes. The caller computes the unified diff locally against
-the base content (see run.py:_files_to_patch). This kills the apply-fail
-confound: small models routinely emit diffs with wrong @@ line numbers or
-slightly off context that `git apply` rejects — whole-file output sidesteps
-that entirely, so we score logic, not diff-formatting luck. [STATUS §16.6 #1]
+plan from the Claude planner in the team arm), return SEARCH/REPLACE edits —
+for each changed region, the exact existing lines and what to replace them
+with. The caller applies them to the base content and computes the unified
+diff locally (see run.py:_deepseek_arm), so a model's *logic* is scored, not
+its diff arithmetic (apply-fail confound, STATUS §16.6 #1).
+
+Why SEARCH/REPLACE, not whole-file:
+  whole-file output makes the model re-emit every line of the file, so a
+  1000-line file blows the output token ceiling and parses to nothing
+  (STATUS §D: cli.py 1050L -> max_tokens stall). SEARCH/REPLACE emits only
+  the changed regions, so output stays ~constant in the edit size, not the
+  file size, and scales to large files. The apply-fail confound stays killed
+  because we still diff locally — the model never writes @@ line numbers.
 """
 from __future__ import annotations
 
@@ -17,45 +24,105 @@ import requests
 from . import config
 
 _SYS = (
-    "You fix bugs in real Python projects. For each file you change, output "
-    "the ENTIRE updated file content verbatim between a line `@@@FILE <path>` "
-    "and a line `@@@ENDFILE`, where <path> is the repo-root-relative path. "
-    "Emit every line of the file, not just the changed lines. Do not output "
-    "diffs, markdown fences, or prose. Only the @@@FILE/@@@ENDFILE blocks."
+    "You fix bugs in real Python projects. Describe every change as one or "
+    "more SEARCH/REPLACE edits. For each file you touch, output:\n"
+    "@@@FILE <repo-root-relative path>\n"
+    "<<<<<<< SEARCH\n"
+    "<exact lines that currently exist in the file>\n"
+    "=======\n"
+    "<the lines that should replace them>\n"
+    ">>>>>>> REPLACE\n"
+    "@@@ENDFILE\n"
+    "Rules: the SEARCH text must match the current file EXACTLY (whitespace "
+    "and all) and be just large enough to be unique. Use several "
+    "SEARCH/REPLACE blocks inside one @@@FILE for separate regions. To create "
+    "a new file, leave the SEARCH section empty and put the full content in "
+    "REPLACE. Output only @@@FILE blocks — no diffs, no markdown fences, no "
+    "prose."
 )
 
-# one block per changed file: @@@FILE <path>\n<full content>\n@@@ENDFILE
-_BLOCK = re.compile(
+# one @@@FILE <path> ... @@@ENDFILE block per changed file
+_FILE_BLOCK = re.compile(
     r"@@@FILE[ \t]+(?P<path>.+?)[ \t]*\n(?P<body>.*?)\n?@@@ENDFILE",
     re.DOTALL,
 )
 
-
-def _strip_fence(body: str) -> str:
-    """Defensively drop a ```lang ... ``` fence if the model added one anyway."""
-    b = body.strip("\n")
-    if b.startswith("```"):
-        lines = b.split("\n")
-        lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        b = "\n".join(lines)
-    return b
+# one SEARCH/REPLACE edit inside a file block; markers must be on their own line
+_SR = re.compile(
+    r"<{5,}[ \t]*SEARCH[ \t]*\n(?P<search>.*?)\n?={5,}[ \t]*\n(?P<replace>.*?)\n?>{5,}[ \t]*REPLACE",
+    re.DOTALL,
+)
 
 
-def parse_files(text: str) -> dict[str, str]:
-    """Extract {path: full_new_content} from the model's @@@FILE blocks."""
-    return {
-        m.group("path").strip(): _strip_fence(m.group("body"))
-        for m in _BLOCK.finditer(text)
-    }
+class EditError(Exception):
+    """A SEARCH block did not match the base file content."""
+
+
+def parse_edits(text: str) -> dict[str, list[tuple[str, str]]]:
+    """Extract {path: [(search, replace), ...]} from the model's @@@FILE blocks."""
+    out: dict[str, list[tuple[str, str]]] = {}
+    for fm in _FILE_BLOCK.finditer(text):
+        path = fm.group("path").strip()
+        edits = [(m.group("search"), m.group("replace"))
+                 for m in _SR.finditer(fm.group("body"))]
+        if edits:
+            out.setdefault(path, []).extend(edits)
+    return out
+
+
+def _flex_apply(content: str, search: str, replace: str) -> str | None:
+    """Whole-line match of `search` in `content` ignoring trailing whitespace.
+
+    Fallback for when an exact substring match fails only because the model
+    dropped or added trailing spaces. Returns the edited content, or None if
+    no whole-line window matches.
+    """
+    c_lines = content.splitlines(keepends=True)
+    s_lines = [ln.rstrip() for ln in search.splitlines()]
+    n = len(s_lines)
+    if n == 0:
+        return None
+    offsets, pos = [], 0
+    for ln in c_lines:
+        offsets.append(pos)
+        pos += len(ln)
+    offsets.append(pos)
+    for i in range(len(c_lines) - n + 1):
+        window = [c_lines[i + j].rstrip("\r\n").rstrip() for j in range(n)]
+        if window == s_lines:
+            start, end = offsets[i], offsets[i + n]
+            rep = replace
+            if content[start:end].endswith("\n") and not rep.endswith("\n"):
+                rep += "\n"
+            return content[:start] + rep + content[end:]
+    return None
+
+
+def apply_edits(base: str, edits: list[tuple[str, str]]) -> str:
+    """Apply (search, replace) edits to `base` in order; raise on a missed SEARCH.
+
+    Exact substring match first (replace first occurrence), then a
+    trailing-whitespace-flexible whole-line fallback. An empty SEARCH means
+    create/overwrite the whole file with REPLACE.
+    """
+    content = base
+    for search, replace in edits:
+        if search.strip() == "":
+            content = replace
+            continue
+        if content.count(search) >= 1:
+            content = content.replace(search, replace, 1)
+            continue
+        flexed = _flex_apply(content, search, replace)
+        if flexed is None:
+            raise EditError(search)
+        content = flexed
+    return content
 
 
 def _files_block(oracle_files: dict[str, str]) -> str:
-    parts = []
-    for path, content in oracle_files.items():
-        parts.append(f"=== {path} ===\n{content}")
-    return "\n\n".join(parts)
+    return "\n\n".join(f"=== {path} ===\n{content}"
+                       for path, content in oracle_files.items())
 
 
 def build_prompt(problem: str, oracle_files: dict[str, str], plan: str | None) -> str:
@@ -66,8 +133,9 @@ def build_prompt(problem: str, oracle_files: dict[str, str], plan: str | None) -
     if plan:
         blocks.append(f"## Implementation plan (follow it)\n{plan}")
     blocks.append(
-        "## Task\nReturn the full updated content of each file you modify, "
-        "each wrapped in `@@@FILE <path>` / `@@@ENDFILE` markers."
+        "## Task\nReturn SEARCH/REPLACE edits for each file you modify, using "
+        "the `@@@FILE` / `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` / "
+        "`@@@ENDFILE` format from the system message."
     )
     return "\n\n".join(blocks)
 
@@ -106,7 +174,7 @@ def cost_usd(usage: dict) -> float:
     )
 
 
-def generate_files(problem, oracle_files, plan=None) -> tuple[dict[str, str], dict]:
-    """Return ({path: full_new_content}, usage). Caller diffs locally."""
+def generate_edits(problem, oracle_files, plan=None) -> tuple[dict[str, list[tuple[str, str]]], dict]:
+    """Return ({path: [(search, replace), ...]}, usage). Caller applies + diffs."""
     text, usage = call(build_prompt(problem, oracle_files, plan))
-    return parse_files(text), usage
+    return parse_edits(text), usage

@@ -14,11 +14,12 @@
     },
     "team": {
       "deepseek_usage": {
-        "input_tokens": 45,
-        "output_tokens": 10626
+        "input_tokens": 9104,
+        "output_tokens": 2457
       },
-      "deepseek_usd": 0.002982,
-      "resolved": true
+      "deepseek_usd": 0.001963,
+      "resolved": true,
+      "edit_misses": 0
     }
   }
 }
