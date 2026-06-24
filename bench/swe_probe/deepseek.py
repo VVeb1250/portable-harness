@@ -125,13 +125,24 @@ def _files_block(oracle_files: dict[str, str]) -> str:
                        for path, content in oracle_files.items())
 
 
-def build_prompt(problem: str, oracle_files: dict[str, str], plan: str | None) -> str:
+def build_prompt(problem: str, oracle_files: dict[str, str], plan: str | None,
+                 feedback: str | None = None) -> str:
     blocks = [
         f"## Problem\n{problem}",
         f"## Files at the buggy commit\n{_files_block(oracle_files)}",
     ]
     if plan:
         blocks.append(f"## Implementation plan (follow it)\n{plan}")
+    if feedback:
+        # agentic retry: the prior patch + the test harness output, so the
+        # model fixes the real failure instead of re-guessing blind.
+        blocks.append(
+            "## Your previous attempt FAILED — fix it\n"
+            "Your last patch and the test output are below. Diagnose why the "
+            "tests still fail and return corrected SEARCH/REPLACE edits "
+            "(against the ORIGINAL files above, not your previous patch).\n\n"
+            + feedback
+        )
     blocks.append(
         "## Task\nReturn SEARCH/REPLACE edits for each file you modify, using "
         "the `@@@FILE` / `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` / "
@@ -174,7 +185,11 @@ def cost_usd(usage: dict) -> float:
     )
 
 
-def generate_edits(problem, oracle_files, plan=None) -> tuple[dict[str, list[tuple[str, str]]], dict]:
-    """Return ({path: [(search, replace), ...]}, usage). Caller applies + diffs."""
-    text, usage = call(build_prompt(problem, oracle_files, plan))
+def generate_edits(problem, oracle_files, plan=None, feedback=None) -> tuple[dict[str, list[tuple[str, str]]], dict]:
+    """Return ({path: [(search, replace), ...]}, usage). Caller applies + diffs.
+
+    `feedback` (agentic retry) carries the prior patch + test output so the
+    model corrects the real failure.
+    """
+    text, usage = call(build_prompt(problem, oracle_files, plan, feedback))
     return parse_edits(text), usage

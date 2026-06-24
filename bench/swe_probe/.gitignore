@@ -3,3 +3,5 @@
 __pycache__/
 *.pyc
 eval_out/
+# agentic-loop per-attempt predictions (canonical __<arm>.diff/.jsonl are kept)
+preds/*__a[0-9]*.jsonl

@@ -6,51 +6,34 @@ diff --git a/src/flask/cli.py b/src/flask/cli.py
      "--sort",
      "-s",
 -    type=click.Choice(("endpoint", "methods", "rule", "match")),
-+    type=click.Choice(("endpoint", "methods", "rule", "domain", "match")),
++    type=click.Choice(("endpoint", "methods", "rule", "match", "domain")),
      default="endpoint",
      help=(
          'Method to sort routes by. "match" is the order that Flask will match '
-@@ -1008,30 +1008,75 @@
+@@ -1008,30 +1008,72 @@
  
      ignored_methods = set(() if all_methods else ("HEAD", "OPTIONS"))
  
 -    if sort in ("endpoint", "rule"):
 -        rules = sorted(rules, key=attrgetter(sort))
-+    host_matching = current_app.url_map.host_matching
-+
-+    domain_sort = False
-+    if sort == "domain":
-+        domain_sort = True
-+        sort_key = lambda rule: (
-+            rule.host if host_matching else rule.subdomain or ""
-+        )
-     elif sort == "methods":
+-    elif sort == "methods":
 -        rules = sorted(rules, key=lambda rule: sorted(rule.methods))  # type: ignore
-+        sort_key = lambda rule: sorted(rule.methods)  # type: ignore
-+    elif sort in ("endpoint", "rule"):
-+        sort_key = attrgetter(sort)
-+    else:  # "match" – keep the unsorted order from iter_rules()
-+        sort_key = None
-+
-+    if sort_key is not None:
-+        rules = sorted(rules, key=sort_key)
-+
-+    has_domain = (
-+        host_matching
-+        or any(rule.subdomain for rule in rules)
-+    )
- 
-     rule_methods = [
-         ", ".join(sorted(rule.methods - ignored_methods))  # type: ignore
-         for rule in rules
-     ]
- 
+-
+-    rule_methods = [
+-        ", ".join(sorted(rule.methods - ignored_methods))  # type: ignore
+-        for rule in rules
+-    ]
+-
 -    headers = ("Endpoint", "Methods", "Rule")
 -    widths = (
 -        max(len(rule.endpoint) for rule in rules),
 -        max(len(methods) for methods in rule_methods),
 -        max(len(rule.rule) for rule in rules),
--    )
++    # Determine if any rule has domain information (subdomain or host).
++    host_matching = current_app.url_map.host_matching
++    has_domain = any(
++        rule.host if host_matching else rule.subdomain for rule in rules
+     )
 -    widths = [max(len(h), w) for h, w in zip(headers, widths)]
 -    row = "{{0:<{0}}}  {{1:<{1}}}  {{2:<{2}}}".format(*widths)
 -
@@ -59,47 +42,67 @@ diff --git a/src/flask/cli.py b/src/flask/cli.py
 -
 -    for rule, methods in zip(rules, rule_methods):
 -        click.echo(row.format(rule.endpoint, methods, rule.rule).rstrip())
-+    domain_header = "Host" if host_matching else "Subdomain"
 +
++    # Build rows. Each row is a list of column values.
++    # Column order: domain (if has_domain), endpoint, methods, rule.
++    rows = []
++    for rule in rules:
++        methods = ", ".join(sorted(rule.methods - ignored_methods))  # type: ignore
++        domain = ""
++        if host_matching:
++            domain = rule.host or ""
++        else:
++            domain = rule.subdomain or ""
++        row = []
++        if has_domain:
++            row.append(domain)
++        row.append(rule.endpoint)
++        row.append(methods)
++        row.append(rule.rule)
++        rows.append(row)
++
++    # Determine the index for sorting based on the sort parameter.
++    col_names = []
 +    if has_domain:
-+        headers = ("Endpoint", "Methods", "Rule", domain_header)
-+        widths = (
-+            max(len(rule.endpoint) for rule in rules),
-+            max(len(methods) for methods in rule_methods),
-+            max(len(rule.rule) for rule in rules),
-+            max(
-+                len(rule.host if host_matching else rule.subdomain or "")
-+                for rule in rules
-+            ),
-+        )
-+        widths = [max(len(h), w) for h, w in zip(headers, widths)]
-+        row_fmt = "{{0:<{0}}}  {{1:<{1}}}  {{2:<{2}}}  {{3:<{3}}}".format(*widths)
++        col_names.append("domain")
++    col_names.extend(["endpoint", "methods", "rule"])
 +
-+        click.echo(row_fmt.format(*headers).strip())
-+        click.echo(row_fmt.format(*("-" * width for width in widths)))
++    sort_index = None
++    if sort != "match":
++        try:
++            sort_index = col_names.index(sort)
++        except ValueError:
++            # Sort parameter is not a column; leave unsorted.
++            pass
 +
-+        for rule, methods in zip(rules, rule_methods):
-+            domain = rule.host if host_matching else rule.subdomain or ""
-+            click.echo(
-+                row_fmt.format(rule.endpoint, methods, rule.rule, domain).rstrip()
-+            )
-+    else:
-+        headers = ("Endpoint", "Methods", "Rule")
-+        widths = (
-+            max(len(rule.endpoint) for rule in rules),
-+            max(len(methods) for methods in rule_methods),
-+            max(len(rule.rule) for rule in rules),
-+        )
-+        widths = [max(len(h), w) for h, w in zip(headers, widths)]
-+        row_fmt = "{{0:<{0}}}  {{1:<{1}}}  {{2:<{2}}}".format(*widths)
++    if sort_index is not None:
++        rows.sort(key=lambda row: row[sort_index])
 +
-+        click.echo(row_fmt.format(*headers).strip())
-+        click.echo(row_fmt.format(*("-" * width for width in widths)))
++    # Build headers and column widths.
++    headers = []
++    if has_domain:
++        headers.append("Host" if host_matching else "Subdomain")
++    headers.extend(["Endpoint", "Methods", "Rule"])
 +
-+        for rule, methods in zip(rules, rule_methods):
-+            click.echo(
-+                row_fmt.format(rule.endpoint, methods, rule.rule).rstrip()
-+            )
++    widths = []
++    for i, header in enumerate(headers):
++        col_values = [row[i] for row in rows]
++        if col_values:
++            widths.append(max(len(header), max(len(v) for v in col_values)))
++        else:
++            widths.append(len(header))
++
++    # Build a format string with correct positional placeholders.
++    placeholders = []
++    for i, w in enumerate(widths):
++        placeholders.append(f"{{{i}:<{w}}}")
++    row_fmt = "  ".join(placeholders)
++
++    click.echo(row_fmt.format(*headers).strip())
++    click.echo(row_fmt.format(*("-" * w for w in widths)).strip())
++
++    for row in rows:
++        click.echo(row_fmt.format(*row).rstrip())
  
  
  cli = FlaskGroup(

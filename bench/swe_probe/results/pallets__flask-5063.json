@@ -17,9 +17,14 @@
         "input_tokens": 9104,
         "output_tokens": 2457
       },
-      "deepseek_usd": 0.001963,
+      "deepseek_usd": 0.003014,
       "resolved": true,
-      "edit_misses": 0
+      "edit_misses": 0,
+      "team_iters": 2,
+      "claude_tokens": {
+        "input": 7983,
+        "output": 312
+      }
     }
   }
 }

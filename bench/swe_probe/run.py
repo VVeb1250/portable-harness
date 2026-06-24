@@ -26,7 +26,7 @@ import json
 import subprocess
 import sys
 
-from . import config, deepseek, pull
+from . import config, deepseek, pull, tokens
 
 
 # --- ledger ----------------------------------------------------------------
@@ -130,6 +130,23 @@ def cmd_gold_validate(args):
     print(f"gold-validate {args.id}: {'PASS (env trustworthy)' if ok else 'FAIL — do not trust scores; switch instance / backend'}")
 
 
+def _apply(b: dict, edits: dict[str, list[tuple[str, str]]]) -> tuple[dict[str, str], list[str]]:
+    """Apply each file's SEARCH/REPLACE edits to its oracle base content.
+
+    Returns ({path: new_content}, [paths whose SEARCH did not match]).
+    """
+    new_files, misses = {}, []
+    for path, file_edits in edits.items():
+        base = b["oracle_files"].get(path, "")
+        try:
+            new_files[path] = deepseek.apply_edits(base, file_edits)
+        except deepseek.EditError as e:
+            misses.append(path)
+            print(f"  ⚠ {path}: SEARCH block not found in base; edit skipped\n"
+                  f"      {str(e)[:160]!r}")
+    return new_files, misses
+
+
 def _deepseek_arm(iid: str, arm: str, plan: str | None):
     """Shared: ask DeepSeek for SEARCH/REPLACE edits, apply + diff locally, ledger.
 
@@ -141,16 +158,7 @@ def _deepseek_arm(iid: str, arm: str, plan: str | None):
     edits, usage = deepseek.generate_edits(
         b["problem_statement"], b["oracle_files"], plan=plan)
 
-    new_files, misses = {}, []
-    for path, file_edits in edits.items():
-        base = b["oracle_files"].get(path, "")
-        try:
-            new_files[path] = deepseek.apply_edits(base, file_edits)
-        except deepseek.EditError as e:
-            misses.append(path)
-            print(f"  ⚠ {path}: SEARCH block not found in base; edit skipped\n"
-                  f"      {str(e)[:160]!r}")
-
+    new_files, misses = _apply(b, edits)
     patch = _files_to_patch(b, new_files)
     (config.PREDS / f"{iid}__{arm}.diff").write_text(patch, encoding="utf-8")
     n_edits = sum(len(v) for v in edits.values())
@@ -192,16 +200,14 @@ def cmd_claude_usage(args):
     print(f"recorded claude usage {args.arm} {args.id}: in={args.in_} out={args.out}")
 
 
-def _eval(iid: str, arm: str) -> bool:
-    """Write prediction from saved .diff, run swebench harness, return resolved."""
-    # gold's prediction jsonl is written by cmd_gold_validate; other arms have a .diff
-    if arm != "gold":
-        diff_path = config.PREDS / f"{iid}__{arm}.diff"
-        if not diff_path.exists():
-            raise SystemExit(f"no patch for {iid} {arm} (generate/register it first)")
-        _write_pred(iid, arm, diff_path.read_text(encoding="utf-8"))
-    run_id = f"{iid}__{arm}"
+def _swebench_run(iid: str, arm: str) -> str:
+    """Run the swebench harness for an already-written pred jsonl. Returns run_id.
 
+    run_id = f"{iid}__{arm}", so an agentic loop passes a per-attempt arm
+    (e.g. team__a2) to dodge swebench's run-id cache that would otherwise skip
+    re-evaluating a changed patch.
+    """
+    run_id = f"{iid}__{arm}"
     if config.USE_WSL:
         script = config.win_to_wsl(config.BASE / "wsl_eval.sh")
         cmd = ["wsl", "-d", config.WSL_DISTRO, "bash", script, iid, arm]
@@ -218,13 +224,45 @@ def _eval(iid: str, arm: str) -> bool:
         ]
     print("  $", " ".join(cmd))
     subprocess.run(cmd, cwd=config.EVAL_OUT, check=False)
+    return run_id
 
-    report = (config.EVAL_OUT / "logs" / "run_evaluation" / run_id / arm / iid / "report.json")
+
+def _report_dir(run_id: str, arm: str, iid: str):
+    return config.EVAL_OUT / "logs" / "run_evaluation" / run_id / arm / iid
+
+
+def _read_resolved(run_id: str, arm: str, iid: str) -> bool | None:
+    """resolved bool from report.json, or None if the harness produced none."""
+    report = _report_dir(run_id, arm, iid) / "report.json"
     if not report.exists():
-        print(f"  ! no report at {report} (eval failed / swebench not installed?)")
-        return False
+        return None
     data = json.loads(report.read_text(encoding="utf-8"))
-    resolved = bool(data.get(iid, {}).get("resolved", False))
+    return bool(data.get(iid, {}).get("resolved", False))
+
+
+def _read_feedback(run_id: str, arm: str, iid: str, max_lines: int = 80) -> str:
+    """Failing-test signal from the harness test_output.txt for an agentic retry."""
+    out = _report_dir(run_id, arm, iid) / "test_output.txt"
+    if not out.exists():
+        return "(no test_output.txt — the patch likely failed to apply cleanly)"
+    lines = out.read_text(encoding="utf-8", errors="replace").splitlines()
+    fails = [ln for ln in lines if ln.startswith(("FAILED", "ERROR", "E   ", "assert"))]
+    picked = fails[:40] + (["...(tail)..."] if fails else []) + lines[-max_lines:]
+    return "\n".join(picked)
+
+
+def _eval(iid: str, arm: str) -> bool:
+    """Write prediction from saved .diff, run swebench harness, return resolved."""
+    if arm != "gold":  # gold's pred jsonl is written by cmd_gold_validate
+        diff_path = config.PREDS / f"{iid}__{arm}.diff"
+        if not diff_path.exists():
+            raise SystemExit(f"no patch for {iid} {arm} (generate/register it first)")
+        _write_pred(iid, arm, diff_path.read_text(encoding="utf-8"))
+    run_id = _swebench_run(iid, arm)
+    resolved = _read_resolved(run_id, arm, iid)
+    if resolved is None:
+        print(f"  ! no report for {run_id} (eval failed / swebench not installed?)")
+        return False
     if arm != "gold":
         ledger_update(iid, arm, resolved=resolved)
     return resolved
@@ -233,6 +271,66 @@ def _eval(iid: str, arm: str) -> bool:
 def cmd_eval(args):
     ok = _eval(args.id, args.arm)
     print(f"eval {args.id} {args.arm}: resolved={ok}")
+
+
+def cmd_team_loop(args):
+    """COST-AXIS team arm: Claude plans ONCE, DeepSeek implements + retries on
+    real test feedback up to --max-iter. Records DeepSeek $ and the tiktoken
+    claude_tok for the single planning step — the scarce-quota number that
+    claude-solo agentic (which loops the seat) must beat.
+    """
+    b = pull.load(args.id)
+    plan = open(args.plan, encoding="utf-8").read()
+    problem, files = b["problem_statement"], b["oracle_files"]
+
+    ds_usd, feedback, resolved, used = 0.0, None, False, 0
+    for k in range(1, args.max_iter + 1):
+        used = k
+        edits, usage = deepseek.generate_edits(problem, files, plan=plan, feedback=feedback)
+        ds_usd += deepseek.cost_usd(usage)
+        new_files, misses = _apply(b, edits)
+        patch = _files_to_patch(b, new_files)
+        (config.PREDS / f"{args.id}__team.diff").write_text(patch, encoding="utf-8")
+
+        arm_k = f"team__a{k}"  # per-attempt run_id dodges swebench cache-skip
+        _write_pred(args.id, arm_k, patch)
+        run_id = _swebench_run(args.id, arm_k)
+        resolved = bool(_read_resolved(run_id, arm_k, args.id))
+        print(f"  iter {k}: ${deepseek.cost_usd(usage):.5f} "
+              f"{sum(len(v) for v in edits.values())} edit(s) "
+              f"misses={len(misses)} resolved={resolved}")
+        if resolved:
+            break
+        feedback = (f"### Previous patch (unified diff, still failing)\n{patch}\n\n"
+                    f"### Test harness output\n{_read_feedback(run_id, arm_k, args.id)}")
+
+    claude_in = tokens.count(problem) + tokens.count_many(files.values())
+    claude_out = tokens.count(plan)
+    ledger_update(args.id, "team",
+                  resolved=resolved, deepseek_usd=round(ds_usd, 6), team_iters=used,
+                  claude_tokens={"input": claude_in, "output": claude_out})
+    print(f"team-loop {args.id}: resolved={resolved} after {used} iter | "
+          f"DeepSeek ${ds_usd:.5f} | claude_tok≈{claude_in + claude_out} "
+          f"(plan once: in={claude_in} out={claude_out})")
+
+
+def cmd_claude_tokens(args):
+    """Record claude_tokens for an arm from the ACTUAL seat content (tiktoken).
+
+    --in-file: problem/files/feedback Claude READ (repeatable).
+    --out-file: patches Claude WROTE (repeatable).
+    Honest + free + symmetric with team's planning count — this is how the
+    claude-solo agentic arm logs the quota it burned looping the seat by hand.
+    """
+    cin = tokens.count_many(open(f, encoding="utf-8").read() for f in (args.in_file or []))
+    cout = tokens.count_many(open(f, encoding="utf-8").read() for f in (args.out_file or []))
+    ledger_update(args.id, args.arm, claude_tokens={"input": cin, "output": cout})
+    print(f"recorded claude_tokens {args.arm} {args.id}: in={cin} out={cout} (tiktoken)")
+
+
+def cmd_feedback(args):
+    """Print the saved failing-test output for an arm (drives a by-hand solo retry)."""
+    print(_read_feedback(f"{args.id}__{args.arm}", args.arm, args.id))
 
 
 def cmd_report(args):
@@ -266,6 +364,9 @@ def main(argv=None):
     s = sub.add_parser("claude-patch"); s.add_argument("id"); s.add_argument("arm", choices=config.ARMS); s.add_argument("--file", required=True); s.set_defaults(fn=cmd_claude_patch)
     s = sub.add_parser("claude-usage"); s.add_argument("id"); s.add_argument("arm", choices=config.ARMS); s.add_argument("--in", dest="in_", type=int, required=True); s.add_argument("--out", type=int, required=True); s.set_defaults(fn=cmd_claude_usage)
     s = sub.add_parser("eval"); s.add_argument("id"); s.add_argument("arm", choices=(*config.ARMS, "gold")); s.set_defaults(fn=cmd_eval)
+    s = sub.add_parser("team-loop"); s.add_argument("id"); s.add_argument("--plan", required=True); s.add_argument("--max-iter", dest="max_iter", type=int, default=3); s.set_defaults(fn=cmd_team_loop)
+    s = sub.add_parser("claude-tokens"); s.add_argument("id"); s.add_argument("arm", choices=config.ARMS); s.add_argument("--in-file", dest="in_file", action="append"); s.add_argument("--out-file", dest="out_file", action="append"); s.set_defaults(fn=cmd_claude_tokens)
+    s = sub.add_parser("feedback"); s.add_argument("id"); s.add_argument("arm"); s.set_defaults(fn=cmd_feedback)
     s = sub.add_parser("report"); s.set_defaults(fn=cmd_report)
 
     args = ap.parse_args(argv)

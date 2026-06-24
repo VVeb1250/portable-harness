@@ -66,7 +66,7 @@
 - **review-step protocol = light** (apply-check+sanity, ไม่ rewrite สิ่ง plan ระบุไม่ครบ) ไม่งั้น team=solo trivially.
 
 **🔴 caveats (อย่าลืม):**
-- **cost axis ยังไม่วัด.** oracle mode → claude-solo+team อ่าน oracle เท่ากัน → quota-delta marginal. EXISTENTIAL ตอบไม่ได้จน **agentic mode** (claude-solo loop แพง vs team plan-once→DeepSeek loop). `claude_tok=0` ทุก arm (ไม่ปลอม).
+- **cost axis: rig BUILT, team-side วัดแล้ว, solo-side ยัง.** agentic loop เสร็จ (`team-loop`: DeepSeek implement→eval→ป้อน test-fail feedback→retry, max-iter, per-attempt run_id ดอจ swebench cache). **ไม่ใช้ paid API** — Claude=seat นี้ (sub, $0 marginal), วัด quota ด้วย **tiktoken** (o200k, proxy symmetric → delta valid; `tokens.py`). first data flask-5063: team Claude quota = **8295 tok FIXED** (plan once in=7983/out=312, ไม่โตตาม iter) + DeepSeek $0.003/2-iter (iter1 fail→feedback→iter2 resolved ✓ = loop ได้ผลจริง). **เหลือ: claude-solo agentic by-hand** (loop seat: read+patch ทุก iter → claude_tok โตตาม iter) เทียบกับ team 8295-fixed = ตอบ EXISTENTIAL. accounting: `claude-tokens --in-file --out-file` (tiktoken นับ content จริงที่ผ่าน seat).
 - N=2 เล็ก + flask public (contaminated) → absolute optimistic; **delta** อ่านได้.
 - **whole-file ไม่ scale → FIXED ด้วย SEARCH/REPLACE blocks** (Aider-style, commit pending). โมเดลคืนเฉพาะ region ที่แก้ → apply locally (exact + trailing-ws flex + new-file) → diff locally (confound-kill เดิมคงอยู่). proof บน flask-5063 (cli.py 1050L ที่เคย stall): output **2457 tok vs 10626 whole-file = -77%**, 0 miss, fresh eval **resolved=True**. miss-tracking ใน ledger (`edit_misses`). ICM `01KVTVC8...` = closed.
 
@@ -93,7 +93,7 @@
 
 1. ~~search/replace blocks~~ **DONE** (§D) — SR แทน whole-file, -77% output บนไฟล์ใหญ่, resolved hold. พร้อมขยาย N.
 2. **N=5-10 quality axis** — flask Lite หมด (เหลือ 4045 messy) → repo hermetic อื่น (pylint/sqlfluff/sympy/sphinx), gold-validate ก่อน. ดู team≥solo & team>deepseek-solo hold.
-3. **🔴 cost axis = agentic mode** — ออกแบบ arm claude-solo loop จริง vs team(plan→DeepSeek loop). = ที่ตอบ EXISTENTIAL จริง. record claude_tok + ccusage.
+3. **cost axis = agentic mode** — rig DONE + team-side วัดแล้ว (§D, no paid API/tiktoken). **เหลือ claude-solo agentic by-hand**: loop seat (read oracle+เขียน patch→eval→อ่าน `feedback`→แก้ ทุก iter, per-attempt arm `claude-solo__a<k>`) → `claude-tokens` นับ in/out จริง → เทียบ team 8295-fixed. ถ้า solo claude_tok >> team & resolved ≈ → team ชนะ quota = ตอบ EXISTENTIAL.
 4. **ctx-mode compliance** หลัง 3-5 swe session → replay+ccusage → keep/kill.
 5. **(parked)** H3 `paw link` skill/CLI (delivery undecided) · DeepSeek+harness runtime wiring · fork ③ เลือก Agyn/MASAI (รอ economics) · per-seat billing test (user-driven) · docs reframe ARCHITECTURE L0→L2.
 
