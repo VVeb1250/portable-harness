@@ -19,7 +19,7 @@
 
 [rtk-ai/icm](https://github.com/rtk-ai/icm) — "Permanent memory for AI agents. Single binary, zero deps, MCP-native." (ตระกูลเดียวกับ RTK)
 
-- **multi-host เอง:** `icm init` default = **`standard` = cli + skill + hook, NO MCP** → inject CLAUDE.md/AGENTS.md instructions + slash-cmd + hook ต่อ host (MCP opt-in `--mode mcp/all`). **→ ICM ผ่าน CLI = 0 tool-def tax** (N1-safe). **ไม่ต้องมี portaw.** ⚠️ v0.10.53: host auto-detect อาจ miss ("not detected") → fallback = CLI bridge ผ่าน CLAUDE.md instruction (STATUS §8).
+- **multi-host เอง:** `icm init` default = **`standard` = cli + skill + hook, NO MCP** → inject CLAUDE.md/AGENTS.md instructions + slash-cmd + hook ต่อ host (MCP opt-in `--mode mcp/all`). **→ ICM ผ่าน CLI = 0 tool-def tax** (N1-safe). **ไม่ต้องมี portaw.** ⚠️ v0.10.53: host auto-detect อาจ miss ("not detected") → fallback = CLI bridge ผ่าน CLAUDE.md instruction (STATUS §C).
 - **store เดียว ใช้ร่วม:** SQLite local เดียว (`%APPDATA%\Roaming\icm\icm\data\memories.db`); CLI + (opt) MCP เข้าตัวเดียวกัน → host เขียน → host อื่นอ่านเจอ.
 - **CLI:** `icm store -t <topic> -c "<content>" -i <critical|high|medium|low> -k "<kw>"` · `icm recall "<q>"` · `icm forget <id>` · `icm consolidate` · `icm topics`.
 - **governance ในตัว:** decay by importance (critical=ไม่ลบ), dedup >85% similar = update ไม่ซ้ำ.

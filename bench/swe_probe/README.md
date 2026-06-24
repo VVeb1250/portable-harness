@@ -19,6 +19,21 @@ meter (DeepSeek V4-flash, $0.14/$0.28 per M) while Claude only plans/reviews.
 - **gold-validate gate** — score the gold patch first; if it doesn't resolve, the
   env/scorer is wrong → don't trust arm scores.
 
+### Patch generation (robust-apply, since flask-5063 round)
+
+DeepSeek (and claude-solo) return the **whole updated content** of each changed
+file inside `@@@FILE <path>` / `@@@ENDFILE` markers; `run.py` computes the unified
+diff locally against the bundle's base content (`_files_to_patch`). This kills the
+apply-fail confound — small models routinely emit diffs with wrong `@@` line
+numbers that `git apply` rejects, so we'd be scoring diff-arithmetic, not logic.
+Every arm uses the same machinery → all patches apply cleanly.
+
+- `max_tokens = 16000` (cli.py-sized files exceed the old 8000 cap → truncation → empty parse).
+- **Backlog:** whole-file still doesn't scale to very large files → switch to
+  search/replace blocks (Aider-style, emit only the changed region).
+- **review = light** (apply-check + sanity, do NOT rewrite what the plan
+  underspecified) — otherwise team trivially equals claude-solo and team-value is unmeasurable.
+
 ## Privacy
 
 DeepSeek = PRC servers; code leaves the machine. Only public OSS instances here. Never
@@ -31,24 +46,27 @@ DeepSeek key (already set this machine):
 $env:DEEPSEEK_API_KEY   # must be non-empty
 ```
 
-swebench scorer needs Python ≤3.12 (no wheels on 3.14) — isolate with uv:
+swebench scorer **runs in WSL, not Windows native** — `import resource` is Unix-only and
+fails at import time on every Windows command (py3.14 also lacks `datasets`/`swebench`
+wheels). `run.py` auto-detects Windows and shells into WSL Ubuntu (`wsl_eval.sh`,
+path-translating `/mnt/e/...`). One-time setup (idempotent):
 ```powershell
-uv python install 3.12
-uv venv --python 3.12 bench\swe_probe\.swebench-venv
-bench\swe_probe\.swebench-venv\Scripts\python -m pip install swebench
+wsl -d Ubuntu bash /mnt/e/portable-harness/bench/swe_probe/wsl_setup.sh
 ```
-(or set `$env:SWEBENCH_PYTHON` to any 3.10–3.12 python with `swebench` installed.)
+This installs swebench in WSL (py3.12.3, `pip install --user --break-system-packages`)
+and checks the Docker Desktop bridge (`docker_ok`).
 
-Docker Desktop must be running. Subset footprint ≈ 10–20 GB (not the 120 GB full-run
-figure); `docker system prune -a` reclaims after.
+Docker Desktop must be running (WSL integration on). flask env-image caches after the
+first eval (~1-2 min/eval after). Subset footprint ≈ 10–20 GB; `docker system prune -a` reclaims.
 
 ## Run (per instance)
 
 ```powershell
-# 0. lock 2 small instances + verify env
-py -m bench.swe_probe.run instances --repo psf/requests      # pick 2 real ids
+# 0. pick a hermetic instance + verify env  (requests = NON-hermetic, needs httpbin → rejected;
+#    flask = in-process test_client = hermetic. flask-4992/5063 already gold-validated.)
+py -m bench.swe_probe.run instances --repo pallets/flask      # list real ids
 py -m bench.swe_probe.run pull <id>
-py -m bench.swe_probe.run gold-validate <id>                 # MUST say PASS
+py -m bench.swe_probe.run gold-validate <id>                 # MUST say PASS (hermetic check)
 
 # 1. DeepSeek-solo (automated)
 py -m bench.swe_probe.run deepseek-solo <id>
@@ -81,6 +99,21 @@ py -m bench.swe_probe.run report
 - team Claude tokens (plan+review only) ≪ solo Claude tokens (full solve) → **quota saved**;
   DeepSeek $ is negligible.
 - `deepseek-solo` is the trap: if it already resolves cheap tasks, the team overhead is pointless.
+
+## Results so far (N=2, quality axis only)
+
+| instance | claude-solo | team | deepseek-solo |
+|---|---|---|---|
+| pallets__flask-4992 (easy) | ✓ | ✓ | ✗ |
+| pallets__flask-5063 (harder) | ✓ | ✓ | ✗ |
+
+Team-value = the **plan carries spec the cheap model can't infer** (deepseek-solo failed
+on interface/format guessing, not logic). Holds on easy and harder instances.
+
+⚠️ **Cost axis not yet measured** — oracle mode makes claude-solo and team read the same
+files, so the quota delta is marginal. The real existential answer needs **agentic mode**
+(claude-solo loops vs team plan-once → DeepSeek loops). `claude_tok` is still 0 (unrecorded,
+not faked). N=2 is small and flask is public (contaminated) → read the *delta*, not absolutes.
 
 ## Phases
 

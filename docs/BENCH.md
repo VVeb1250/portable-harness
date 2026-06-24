@@ -2,7 +2,7 @@
 
 > สถานะ: **plan, design-only** · 2026-06-21 · เจ้าของ: supimol.web@gmail.com
 > จุดประสงค์: **ฆ่า vibes** — วัด NET ก่อน lock anchor. mindset #5 (anti-vibes/empirical).
-> คู่กับ: [STATUS.md](./STATUS.md) §4 · [ARCHITECTURE.md](./ARCHITECTURE.md) §6 ledger.
+> คู่กับ: [STATUS.md](./STATUS.md) §C/§D · [ARCHITECTURE.md](./ARCHITECTURE.md) §6 ledger.
 
 ---
 
