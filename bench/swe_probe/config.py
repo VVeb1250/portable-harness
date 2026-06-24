@@ -28,6 +28,30 @@ DEEPSEEK_KEY_ENV = "DEEPSEEK_API_KEY"
 PRICE_IN = 0.14 / 1_000_000
 PRICE_OUT = 0.28 / 1_000_000
 
+# --- API-equivalent pricing (USD per 1M tokens) ----------------------------
+# For the cost axis we price EVERY member at API list rate, even the
+# subscription seats (Claude/Codex real marginal $ is $0 — flat monthly fee).
+# This puts all members in ONE currency = opportunity cost ("what this run
+# would cost billed at API rates"). Without it the sub seats read as $0 and a
+# team that adds metered DeepSeek cents looks worse than a "free" solo seat,
+# hiding that the solo seat burned scarce, capped quota. Reasoning tokens are
+# billed at the output rate.
+# RATES verified 2026-06-24 (recheck on model/price change, STATUS §G):
+#   Claude Opus 4.8 std  $5 / $25    platform.claude.com/docs pricing
+#   gpt-5-codex          $1.25 / $10 help.openai.com codex rate-card (5.2/5.3=$1.75/$14)
+#   DeepSeek v4-flash    $0.14 / $0.28  (metered = real out-of-pocket)
+PRICING = {  # member: (usd_per_1M_input, usd_per_1M_output)
+    "claude": (5.0, 25.0),
+    "codex": (1.25, 10.0),
+    "deepseek": (PRICE_IN * 1_000_000, PRICE_OUT * 1_000_000),
+}
+
+
+def usd(member: str, in_tok: int, out_tok: int, reason_tok: int = 0) -> float:
+    """API-equivalent USD for one member's token usage (reasoning at out rate)."""
+    pin, pout = PRICING[member]
+    return (in_tok * pin + (out_tok + reason_tok) * pout) / 1_000_000
+
 # --- arms ------------------------------------------------------------------
 ARMS = ("claude-solo", "deepseek-solo", "team", "codex-solo")
 

@@ -376,6 +376,36 @@ def _arm_cost(a: dict) -> tuple[int, int]:
     return out, turns
 
 
+def _arm_usd(a: dict) -> float | None:
+    """Total API-equivalent USD for an arm: every member's in+out+reasoning
+    priced at API list rate (config.usd). One currency across sub seats +
+    metered models (STATUS §F.4 cost axis). Claude side is a FLOOR — tiktoken
+    on the plan text misses in-session hidden/thinking tokens.
+
+    Returns None when NO usage was recorded (e.g. claude-solo measured by hand
+    but not yet logged) — so an unmeasured arm shows `n/a`, never a fake $0.
+    """
+    total, seen = 0.0, False
+    ct = a.get("claude_tokens")
+    if ct:
+        seen = True
+        total += config.usd("claude", ct.get("input", 0), ct.get("output", 0))
+    cx = a.get("codex_usage")
+    if cx:
+        seen = True
+        total += config.usd("codex", cx.get("input_tokens", 0),
+                            cx.get("output_tokens", 0),
+                            cx.get("reasoning_output_tokens", 0))
+    ds = a.get("deepseek_usage")
+    if ds:  # deepseek-solo: per-call usage present
+        seen = True
+        total += config.usd("deepseek", ds.get("input_tokens", 0), ds.get("output_tokens", 0))
+    elif "deepseek_usd" in a:  # team: per-iter usage not kept, $ already rolled up
+        seen = True
+        total += a["deepseek_usd"]
+    return total if seen else None
+
+
 def cmd_report(args):
     rows = []
     for p in sorted(config.RESULTS.glob("*.json")):
@@ -385,16 +415,20 @@ def cmd_report(args):
                 continue
             a = led["arms"][arm]
             out_tok, turns = _arm_cost(a)
+            usd = _arm_usd(a)
             rows.append((
                 led["instance_id"], arm,
                 "✓" if a.get("resolved") else ("✗" if "resolved" in a else "-"),
-                out_tok, turns or "-", f"${a.get('deepseek_usd', 0):.5f}",
+                out_tok, turns or "-", f"${usd:.5f}" if usd is not None else "n/a",
             ))
-    print(f"{'instance':28} {'arm':16} {'pass':4} {'out_tok':>8} {'turns':>5} {'ds_usd':>9}")
+    print(f"{'instance':28} {'arm':16} {'pass':4} {'out_tok':>8} {'turns':>5} {'api_usd':>9}")
     for r in rows:
         print(f"{r[0]:28} {r[1]:16} {r[2]:4} {r[3]:>8} {str(r[4]):>5} {r[5]:>9}")
-    print("\nwin = team/codex pass == claude-solo pass, with far fewer OUTPUT tokens"
-          " + turns on the scarce premium seat (input-reads don't bind rate limits)")
+    print("\napi_usd = all members' in+out+reasoning at API list rate (one currency;"
+          " sub seats priced at opportunity cost, not their $0 marginal).")
+    print("win = team/codex pass == claude-solo pass at far lower api_usd (+ fewer"
+          " out-tok/turns on the capped premium seat). NB: claude api_usd is a FLOOR"
+          " (tiktoken misses hidden thinking tokens); codex input not cache-discounted.")
 
 
 def main(argv=None):
