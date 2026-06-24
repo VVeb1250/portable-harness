@@ -53,7 +53,8 @@ def usd(member: str, in_tok: int, out_tok: int, reason_tok: int = 0) -> float:
     return (in_tok * pin + (out_tok + reason_tok) * pout) / 1_000_000
 
 # --- arms ------------------------------------------------------------------
-ARMS = ("claude-solo", "deepseek-solo", "team", "codex-solo")
+ARMS = ("claude-solo", "deepseek-solo", "team", "codex-solo",
+        "claude-plan-codex", "codex-plan-deepseek", "team3")
 
 # --- candidate instances (hermetic tests only; VERIFY via gold-validate) -----
 # NB: psf/requests instances are NON-hermetic (need httpbin) -> gold-validate

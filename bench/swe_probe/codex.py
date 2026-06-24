@@ -131,3 +131,47 @@ def generate_patch(problem: str, oracle_files: dict[str, str],
     finally:
         if not keep:
             shutil.rmtree(d, ignore_errors=True)
+
+
+def _exec_text(prompt: str, oracle_files: dict[str, str]) -> tuple[str, dict, int]:
+    """Run codex READ-ONLY on the staged repo; return (last_message, usage, turns).
+
+    For the planner + reviewer roles: codex reads the files and reasons but does
+    not edit. `--output-last-message` gives the final assistant text directly.
+    """
+    d = Path(tempfile.mkdtemp(prefix="cxread_"))
+    try:
+        _stage_repo(d, oracle_files)
+        msgf = d / "_last.txt"
+        cmd = (f'{CODEX_BIN} exec -C "{d}" -s read-only '
+               f'--skip-git-repo-check --json -o "{msgf}" -')
+        r = subprocess.run(cmd, shell=True, input=prompt, capture_output=True,
+                           text=True, encoding="utf-8", errors="replace", timeout=_TIMEOUT)
+        if r.returncode != 0:
+            raise CodexError(f"codex exec(read) rc={r.returncode}: {r.stderr.strip()[:300]}")
+        usage, turns = _parse_events(r.stdout)
+        text = msgf.read_text(encoding="utf-8", errors="replace") if msgf.exists() else ""
+        return text, usage, turns
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def generate_plan(problem: str, oracle_files: dict[str, str]) -> tuple[str, dict, int]:
+    """Planner role: a concise implementation plan (not the patch)."""
+    prompt = (
+        "Produce a concise implementation plan to fix the bug below. List the exact "
+        "code changes (file, function, what to change and why). Do NOT write the full "
+        "patch — just the plan.\n\n## Problem\n" + problem)
+    return _exec_text(prompt, oracle_files)
+
+
+def review(problem: str, plan: str, patch: str,
+           oracle_files: dict[str, str]) -> tuple[str, dict, int]:
+    """Reviewer role: critique a candidate patch; first line VERDICT: PASS|REVISE."""
+    prompt = (
+        "You are a code reviewer. Given the problem, the plan, and a candidate patch "
+        "(unified diff), decide if the patch correctly and completely solves the "
+        "problem. Reply with `VERDICT: PASS` or `VERDICT: REVISE` on the first line, "
+        "then concise actionable notes.\n\n"
+        f"## Problem\n{problem}\n\n## Plan\n{plan}\n\n## Candidate patch\n{patch}")
+    return _exec_text(prompt, oracle_files)

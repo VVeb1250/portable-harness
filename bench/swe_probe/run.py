@@ -203,6 +203,17 @@ def cmd_codex_solo(args):
     print(f"  (codex patch saved — eval {args.id} codex-solo)")
 
 
+def cmd_codex_impl(args):
+    """Codex implements from a given plan (e.g. claude-plan-codex matrix arm).
+
+    The plan author (Claude on the seat) records its own tokens separately via
+    `claude-tokens`; this only runs + scores the codex implementation side.
+    """
+    plan = open(args.plan, encoding="utf-8").read()
+    _codex_arm(args.id, args.arm, plan=plan)
+    print(f"  (codex patch saved — eval {args.id} {args.arm})")
+
+
 def cmd_deepseek_solo(args):
     _deepseek_arm(args.id, "deepseek-solo", plan=None)
 
@@ -341,6 +352,65 @@ def cmd_team_loop(args):
           f"(plan once: in={claude_in} out={claude_out})")
 
 
+def cmd_team3(args):
+    """Real 3-role team (STATUS concept coordination-B): Planner -> Implementer ->
+    Reviewer -> revise loop over a shared blackboard. Planner+Reviewer = Codex,
+    Implementer = DeepSeek — heterogeneous + fully scriptable. The reviewer GATES
+    before the (expensive) eval: a REVISE verdict re-implements with review notes
+    (no Docker run); only a PASS goes to eval; an eval-fail feeds the test output
+    back too. This is the team arm that actually exercises teamwork, vs the thin
+    `team` handoff (plan-once -> impl -> retry-on-pytest).
+    """
+    b = pull.load(args.id)
+    problem, files = b["problem_statement"], b["oracle_files"]
+
+    plan, pu, pt = codex.generate_plan(problem, files)
+    cx = {"input_tokens": 0, "output_tokens": 0, "reasoning_output_tokens": 0}
+    cx_turns = 0
+
+    def add_cx(u, t):
+        nonlocal cx_turns
+        for k_ in cx:
+            cx[k_] += u.get(k_, 0)
+        cx_turns += t
+
+    add_cx(pu, pt)
+    ds_usd, feedback, resolved, used = 0.0, None, False, 0
+    for k in range(1, args.max_iter + 1):
+        used = k
+        edits, u = deepseek.generate_edits(problem, files, plan=plan, feedback=feedback)
+        ds_usd += deepseek.cost_usd(u)
+        new_files, misses = _apply(b, edits)
+        patch = _files_to_patch(b, new_files)
+        (config.PREDS / f"{args.id}__team3.diff").write_text(patch, encoding="utf-8")
+
+        rev, ru, rt = codex.review(problem, plan, patch, files)
+        add_cx(ru, rt)
+        passed = rev.lstrip().upper().startswith("VERDICT: PASS")
+        if not passed and k < args.max_iter:
+            feedback = (f"### Reviewer feedback (address it)\n{rev}\n\n"
+                        f"### Previous patch\n{patch}")
+            print(f"  iter {k}: misses={len(misses)} reviewer=REVISE -> re-implement (no eval)")
+            continue
+
+        arm_k = f"team3__a{k}"  # per-attempt run_id dodges swebench cache
+        _write_pred(args.id, arm_k, patch)
+        run_id = _swebench_run(args.id, arm_k)
+        resolved = bool(_read_resolved(run_id, arm_k, args.id))
+        print(f"  iter {k}: misses={len(misses)} "
+              f"reviewer={'PASS' if passed else 'REVISE(forced-eval@last)'} resolved={resolved}")
+        if resolved:
+            break
+        feedback = (f"### Reviewer feedback\n{rev}\n\n### Test harness output\n"
+                    f"{_read_feedback(run_id, arm_k, args.id)}\n\n### Previous patch\n{patch}")
+
+    ledger_update(args.id, "team3", resolved=resolved, deepseek_usd=round(ds_usd, 6),
+                  team_iters=used, codex_usage=cx, codex_turns=cx_turns)
+    print(f"team3 {args.id}: resolved={resolved} iters={used} | "
+          f"codex(plan+review) in={cx['input_tokens']} out={cx['output_tokens']} "
+          f"reason={cx['reasoning_output_tokens']} | DeepSeek ${ds_usd:.5f}")
+
+
 def cmd_claude_tokens(args):
     """Record claude_tokens for an arm from the ACTUAL seat content (tiktoken).
 
@@ -440,6 +510,8 @@ def main(argv=None):
     s = sub.add_parser("gold-validate"); s.add_argument("id"); s.set_defaults(fn=cmd_gold_validate)
     s = sub.add_parser("deepseek-solo"); s.add_argument("id"); s.set_defaults(fn=cmd_deepseek_solo)
     s = sub.add_parser("codex-solo"); s.add_argument("id"); s.set_defaults(fn=cmd_codex_solo)
+    s = sub.add_parser("codex-impl"); s.add_argument("id"); s.add_argument("--plan", required=True); s.add_argument("--arm", default="claude-plan-codex", choices=config.ARMS); s.set_defaults(fn=cmd_codex_impl)
+    s = sub.add_parser("team3"); s.add_argument("id"); s.add_argument("--max-iter", dest="max_iter", type=int, default=3); s.set_defaults(fn=cmd_team3)
     s = sub.add_parser("team-impl"); s.add_argument("id"); s.add_argument("--plan", required=True); s.set_defaults(fn=cmd_team_impl)
     s = sub.add_parser("claude-patch"); s.add_argument("id"); s.add_argument("arm", choices=config.ARMS); s.add_argument("--file", required=True); s.set_defaults(fn=cmd_claude_patch)
     s = sub.add_parser("claude-usage"); s.add_argument("id"); s.add_argument("arm", choices=config.ARMS); s.add_argument("--in", dest="in_", type=int, required=True); s.add_argument("--out", type=int, required=True); s.set_defaults(fn=cmd_claude_usage)

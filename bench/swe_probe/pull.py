@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 
 import requests
@@ -19,19 +20,39 @@ _FILE_RE = re.compile(r"^\+\+\+ b/(.+)$", re.MULTILINE)
 
 
 def _rows(offset: int, length: int) -> list[dict]:
-    r = requests.get(
-        ROWS_URL,
-        params={
-            "dataset": config.DATASET,
-            "config": config.CONFIG,
-            "split": config.SPLIT,
-            "offset": offset,
-            "length": length,
-        },
-        timeout=60,
-    )
-    r.raise_for_status()
-    return [row["row"] for row in r.json().get("rows", [])]
+    # HF datasets-server flaps (502/timeout); retry with backoff so a batch
+    # pull (which scans the split) doesn't die on a transient blip.
+    last = None
+    for attempt in range(5):
+        try:
+            r = requests.get(
+                ROWS_URL,
+                params={
+                    "dataset": config.DATASET,
+                    "config": config.CONFIG,
+                    "split": config.SPLIT,
+                    "offset": offset,
+                    "length": length,
+                },
+                timeout=60,
+            )
+            r.raise_for_status()
+            return [row["row"] for row in r.json().get("rows", [])]
+        except requests.RequestException as e:
+            last = e
+            time.sleep(2 * (attempt + 1))
+    raise last
+
+
+# whole split cached per process so a 6-instance pull scans HF once, not 6x
+_ALL_ROWS: list[dict] | None = None
+
+
+def _all_rows() -> list[dict]:
+    global _ALL_ROWS
+    if _ALL_ROWS is None:
+        _ALL_ROWS = list(iter_all())
+    return _ALL_ROWS
 
 
 def iter_all(page: int = 100):
@@ -71,7 +92,7 @@ def _raw_file(repo: str, commit: str, path: str) -> str:
 
 def pull(instance_id: str) -> Path:
     """Fetch one instance + its oracle files; write instances/<id>.json."""
-    row = next((r for r in iter_all() if r["instance_id"] == instance_id), None)
+    row = next((r for r in _all_rows() if r["instance_id"] == instance_id), None)
     if row is None:
         raise SystemExit(f"instance not found in {config.DATASET}: {instance_id}")
 
