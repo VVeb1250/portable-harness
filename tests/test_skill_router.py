@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Sequence
 
 from paw.skill_router import (
     SkillRecord,
@@ -29,14 +30,16 @@ def _skill(
 
 
 class TaskCapsuleTests(unittest.TestCase):
-    def test_thai_router_request_gets_canonical_state(self) -> None:
+    def test_capsule_keeps_bounded_goal_without_requiring_translation_rules(self) -> None:
         capsule = build_task_capsule(
-            "ออกแบบ PUSH skill router ให้เลือก skill โดยไม่กิน context เยอะ"
+            "日本語でエージェントのスキルルーターを設計する"
         )
 
-        self.assertIn("agent-routing", capsule.domains)
-        self.assertEqual(capsule.operation, "design")
-        self.assertIn("low-context", capsule.constraints)
+        self.assertEqual(
+            capsule.goal,
+            "日本語でエージェントのスキルルーターを設計する",
+        )
+        self.assertLessEqual(len(capsule.goal), 240)
 
 
 class SkillSuggestionTests(unittest.TestCase):
@@ -158,6 +161,41 @@ class SkillSuggestionTests(unittest.TestCase):
 
         self.assertEqual(result.status, "silent")
         self.assertEqual(result.suggestions, ())
+
+    def test_multilingual_semantic_scorer_does_not_need_language_dictionaries(
+        self,
+    ) -> None:
+        def semantic_scores(
+            task: str,
+            skills: Sequence[SkillRecord],
+        ) -> dict[str, float]:
+            del task
+            return {
+                skill.name: (
+                    0.91 if skill.name == "agent-harness-construction" else 0.10
+                )
+                for skill in skills
+            }
+
+        tasks = (
+            "ออกแบบเราเตอร์ที่เลือกทักษะให้เอเจนต์",
+            "设计一个为智能代理选择技能的路由器",
+            "エージェントのスキルを選ぶルーターを設計する",
+            "Diseña un enrutador que seleccione habilidades para el agente",
+        )
+        for task in tasks:
+            with self.subTest(task=task):
+                result = suggest_skill(
+                    task,
+                    self.skills,
+                    semantic_scorer=semantic_scores,
+                )
+
+                self.assertEqual(
+                    result.suggestions[0].skill,
+                    "agent-harness-construction",
+                )
+                self.assertIn("semantic", result.suggestions[0].reason)
 
 
 class SkillDiscoveryTests(unittest.TestCase):
