@@ -20,6 +20,39 @@ The core promise is:
 > Before the agent acts, retrieve the capability or correction most likely to
 > help now — otherwise remain silent.
 
+## Scope vs project concept (build vs rent)
+
+The detailed design below specifies a full retrieval + ranking + feedback engine
+for all three lanes. That is the north-star reference, not the v0 build target.
+A prior analysis (per `docs/ARCHITECTURE.md` §11.4) concluded that two of the
+three lanes should be *rented* from native host mechanisms, and only the mistake
+lane is genuine net-new value worth building now.
+
+| Lane | Verdict | Mechanism to rent | Why |
+| --- | --- | --- | --- |
+| Skill | RENT native | Native Skill discovery (name+description menu → `Skill` tool, progressive load) + the existing `~/.claude/hooks/skill-router.py` hook | A zero-AI lexical skill router already exists (TF-IDF cosine + curated intent-phrase boost from `skill-graph.json` + cooldown + outcome-demotion + a tier-2 MiniLM ONNX fallback for Thai/CJK). Rebuilding it as FTS5 is a reimplementation of retrieval that already ships. |
+| MCP / capability | RENT discovery + FOLD metadata into the bundle catalog | Native Tool Search for runtime PULL (deferred tools show name only at 0 schema tokens/turn; the agent forms a query — `keyword`, `select:Name`, `+require` — to load schemas on demand, including still-connecting servers). Host/availability/cost metadata lives in `paw/registry/sets.json` as curation, not a runtime ranking engine. | Tool Search is agent-PULL, matching locked decision A-15 (capability lane = PULL, not push). It removes the discovery-tax; loaded schemas still cost tokens per turn, so delivery-tax A-08 is only half-solved — but a custom router would not solve that either. The registry's job is curation, not retrieval. |
+| Mistake | BUILD now | None — no native equivalent | `before_tool` exact tool+operation+project match → `icm recall <command>` → `warn`, delivered via a PreToolUse hook. Fully deterministic (no Thai/lexical risk), and the project's locked durable value (A-16, `docs/ARCHITECTURE.md` §11.2 / §11.4 value (b)). |
+
+### Why rent
+
+The smart-ceiling of any zero-AI lexical router is the same low class regardless
+of implementation: FTS5/BM25 == TF-IDF == Tool Search's lexical retrieval. The
+FTS5/BM25 skill+capability ranking proposed below would be a fourth
+reimplementation of retrieval that already exists in `~/.claude/hooks/skill-router.py`
+and native Tool Search. The genuine intelligence in capability routing is the
+**agent + explicit PULL query**, not the router — which is exactly why
+`docs/ARCHITECTURE.md` §11.4 scopes it as rent: "router/search = commodity,
+platform absorbing — Tool Search / skills / memory-tool. VALUE = curation ·
+action-keyed mistake-layer · cross-host. build these 3; rent the rest."
+
+A push-style skill-suggester already exists and measures ~8% real-world uptake
+(suggestions ignored 92% of the time). Pushing a skill from a free-text
+`task_received` description is the exact failure mode of the archived `portaw`
+blind-push — locked decision A-15 — where an all-Thai prompt yielded TF-IDF=0
+and then a spurious tier-2 semantic match. The mistake lane has none of this
+risk because it matches on exact structured fields, never on prose.
+
 ## Design constraints
 
 1. No generative AI in the routing path.
@@ -220,6 +253,11 @@ smallest correction needed for the current event.
 
 ## Retrieval
 
+> Reference north-star. This full lexical design applies only IF a custom router
+> is ever justified. For v0 the skill and capability lanes ride native Tool
+> Search plus the existing `~/.claude/hooks/skill-router.py` hook, so this
+> machinery is built only for the mistake lane's exact-match path initially.
+
 The initial router uses lexical retrieval only:
 
 - structured exact matching;
@@ -272,6 +310,10 @@ FTS5 is primarily for natural-language task descriptions and error summaries,
 not for facts already represented as fields.
 
 ## Ranking
+
+> Reference north-star, as with *Retrieval* above. For v0 only the mistake
+> lane's exact-match path is built; skill/capability ranking is rented from
+> native Tool Search and the existing hook until a frozen eval proves a gap.
 
 Use a deterministic score whose components are visible in diagnostics.
 
@@ -505,6 +547,12 @@ the source of truth; the routing index is disposable.
 
 ## MVP
 
+Per *Scope vs project concept* above, the MVP collapses to the **mistake lane
+only** (vertical slice #1 plus the silence slice #4). The skill and capability
+lanes defer to rented native mechanisms — native Tool Search and the existing
+`~/.claude/hooks/skill-router.py` hook — until a frozen evaluation proves native
+recall is insufficient. The fuller list below remains the north-star target.
+
 The first useful version should be intentionally narrow.
 
 ### Inputs
@@ -535,8 +583,12 @@ The first useful version should be intentionally narrow.
 ### First vertical slices
 
 1. `before_tool` retrieves an exact project-specific mistake.
-2. `task_received` recommends one strongly matching skill.
-3. `after_error` retrieves a confirmed correction or recovery skill.
+2. `task_received` recommends one strongly matching skill — *deferred — rented
+   via native Tool Search / existing `skill-router.py` hook; revisit only if eval
+   shows a gap.*
+3. `after_error` retrieves a confirmed correction or recovery skill — *deferred —
+   rented via native Tool Search / existing `skill-router.py` hook; revisit only
+   if eval shows a gap.*
 4. An unrelated event returns no suggestions.
 5. A repeated suggestion is suppressed by cooldown.
 
