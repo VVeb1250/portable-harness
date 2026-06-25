@@ -1,0 +1,27 @@
+diff --git a/sympy/matrices/sparse.py b/sympy/matrices/sparse.py
+--- a/sympy/matrices/sparse.py
++++ b/sympy/matrices/sparse.py
+@@ -985,8 +985,9 @@
+         >>> C == A.row_insert(A.rows, Matrix(B))
+         True
+         """
+-        if not self:
+-            return type(self)(other)
++        if self.rows == 0 and self.cols != other.cols:
++            new_self = self._new(0, other.cols, {})
++            return new_self.col_join(other)
+         A, B = self, other
+         if not A.cols == B.cols:
+             raise ShapeError()
+@@ -1191,8 +1192,9 @@
+         >>> C == A.col_insert(A.cols, B)
+         True
+         """
+-        if not self:
+-            return type(self)(other)
++        if self.cols == 0 and self.rows != other.rows:
++            new_self = self._new(other.rows, 0, {})
++            return new_self.row_join(other)
+         A, B = self, other
+         if not A.rows == B.rows:
+             raise ShapeError()

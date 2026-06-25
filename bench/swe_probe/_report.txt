@@ -1,0 +1,45 @@
+instance                     arm              pass  out_tok turns   api_usd
+pallets__flask-4045          claude-solo      ✗           0     -       n/a
+pallets__flask-4045          deepseek-solo    -        5129     -  $0.00213
+pallets__flask-4045          team             ✗         625     -  $0.00021
+pallets__flask-4992          claude-solo      ✓           0     -       n/a
+pallets__flask-4992          deepseek-solo    ✗        3052     -  $0.00131
+pallets__flask-4992          team             ✓        3579     -  $0.00104
+pallets__flask-5063          claude-solo      ✓           0     -       n/a
+pallets__flask-5063          deepseek-solo    ✗        9106     -  $0.00256
+pallets__flask-5063          team             ✓        2769     2  $0.04968
+pallets__flask-5063          codex-solo       ✓        4469    17  $0.69293
+psf__requests-2317           deepseek-solo    -         979     -  $0.00107
+sympy__sympy-11400           claude-solo      ✗         218     -  $0.02328
+sympy__sympy-11400           deepseek-solo    ✗        1497     -  $0.00098
+sympy__sympy-11400           codex-solo       ✗        4317    22  $1.01430
+sympy__sympy-11400           team3            ✓        4846     3  $0.96831
+sympy__sympy-11870           deepseek-solo    ✗        5521     -  $0.00504
+sympy__sympy-11870           codex-solo       ✗        6696    13  $1.84058
+sympy__sympy-11870           team3            ✗        5531     3  $0.85492
+sympy__sympy-11897           deepseek-solo    ✗       10087     -  $0.00593
+sympy__sympy-11897           codex-solo       ✗        9219    20  $1.75140
+sympy__sympy-11897           team3            ✗        8453     3  $1.66218
+sympy__sympy-13031           claude-solo      ✓         241     -  $0.05969
+sympy__sympy-13031           deepseek-solo    ✗        6169     -  $0.00333
+sympy__sympy-13031           codex-solo       ✓        4612    14  $0.56277
+sympy__sympy-13031           team3            ✓        3454     3  $0.60006
+sympy__sympy-13437           claude-solo      ✗         150     -  $0.07779
+sympy__sympy-13437           deepseek-solo    ✗        1021     -  $0.00030
+sympy__sympy-13437           codex-solo       ✗        4055    13  $0.79875
+sympy__sympy-13437           team3            ✗        5548     3  $0.90706
+sympy__sympy-13647           claude-solo      ✓         128     -  $0.09297
+sympy__sympy-13647           deepseek-solo    ✓        2296     -  $0.00065
+sympy__sympy-13647           codex-solo       ✓        2717     8  $0.55186
+sympy__sympy-13647           team3            ✓        4464     3  $0.69723
+sympy__sympy-13895           claude-solo      ✗         210     -  $0.15323
+sympy__sympy-13895           deepseek-solo    ✓       10863     -  $0.00306
+sympy__sympy-13895           codex-solo       ✓        4957    23  $1.46368
+sympy__sympy-13895           team3            ✓        7137     3  $1.53491
+sympy__sympy-13915           claude-solo      ✗         176     -  $0.07757
+sympy__sympy-13915           deepseek-solo    ✗        7726     -  $0.00217
+sympy__sympy-13915           codex-solo       ✓        3948    24  $0.84794
+sympy__sympy-13915           team3            ✓        4075     3  $0.77907
+
+api_usd = all members' in+out+reasoning at API list rate (one currency; sub seats priced at opportunity cost, not their $0 marginal).
+win = team/codex pass == claude-solo pass at far lower api_usd (+ fewer out-tok/turns on the capped premium seat). NB: claude api_usd is a FLOOR (tiktoken misses hidden thinking tokens); codex input not cache-discounted.

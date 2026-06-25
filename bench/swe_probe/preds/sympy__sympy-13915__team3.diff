@@ -1,0 +1,14 @@
+diff --git a/sympy/core/mul.py b/sympy/core/mul.py
+--- a/sympy/core/mul.py
++++ b/sympy/core/mul.py
+@@ -423,6 +423,10 @@
+             changed = False
+             for b, e in c_powers:
+                 if e.is_zero:
++                    # If the base is an Add or Mul containing an infinity,
++                    # dropping it would hide an undefined ∞/∞ operation.
++                    if isinstance(b, (Add, Mul)) and b.has(S.Infinity, S.NegativeInfinity, S.ComplexInfinity):
++                        return [S.NaN], [], order_symbols
+                     continue
+                 if e is S.One:
+                     if b.is_Number:

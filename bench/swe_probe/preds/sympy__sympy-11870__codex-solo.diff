@@ -1,0 +1,14 @@
+diff --git a/sympy/functions/elementary/trigonometric.py b/sympy/functions/elementary/trigonometric.py
+index b2a3f3d..18283d2 100644
+--- a/sympy/functions/elementary/trigonometric.py
++++ b/sympy/functions/elementary/trigonometric.py
+@@ -408,6 +408,9 @@ class sin(TrigonometricFunction):
+     def _eval_rewrite_as_sec(self, arg):
+         return 1 / sec(arg - S.Pi / 2, evaluate=False)
+ 
++    def _eval_rewrite_as_sinc(self, arg):
++        return arg*sinc(arg)
++
+     def _eval_conjugate(self):
+         return self.func(self.args[0].conjugate())
+ 

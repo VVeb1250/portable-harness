@@ -1,0 +1,31 @@
+diff --git a/sympy/functions/elementary/trigonometric.py b/sympy/functions/elementary/trigonometric.py
+--- a/sympy/functions/elementary/trigonometric.py
++++ b/sympy/functions/elementary/trigonometric.py
+@@ -16,6 +16,8 @@
+ from sympy.sets.sets import FiniteSet
+ from sympy.utilities.iterables import numbered_symbols
+ from sympy.core.compatibility import range
++from sympy.functions.elementary.piecewise import Piecewise
++from sympy.core.relational import Eq
+ 
+ ###############################################################################
+ ########################## TRIGONOMETRIC FUNCTIONS ############################
+@@ -392,6 +394,9 @@
+     def _eval_rewrite_as_sincos(self, arg):
+         return sin(arg)*cos(arg)/cos(arg)
+ 
++    def _eval_rewrite_as_sinc(self, arg):
++        return arg * sinc(arg)
++
+     def _eval_rewrite_as_cot(self, arg):
+         cot_half = cot(S.Half*arg)
+         return 2*cot_half/(1 + cot_half**2)
+@@ -1817,7 +1822,7 @@
+         return jn(0, arg)
+ 
+     def _eval_rewrite_as_sin(self, arg):
+-        return sin(arg) / arg
++        return Piecewise((1, Eq(arg, 0)), (sin(arg)/arg, True))
+ 
+ 
+ ###############################################################################

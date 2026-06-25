@@ -1,0 +1,38 @@
+diff --git a/sympy/functions/elementary/trigonometric.py b/sympy/functions/elementary/trigonometric.py
+--- a/sympy/functions/elementary/trigonometric.py
++++ b/sympy/functions/elementary/trigonometric.py
+@@ -1820,6 +1820,34 @@
+         return sin(arg) / arg
+ 
+ 
++# Function to convert exponential expressions to trigonometric forms
++def _exponential_to_trig(expr):
++    """Convert sums of exponentials to trig functions."""
++    from sympy import I, exp, sin, cos, Add, Mul, S
++    # Pattern: a*exp(I*x) + b*exp(-I*x) -> trig
++    # More general cases can be added.
++    if expr.is_Add:
++        args = expr.args
++        # Check for linear combination of exp(I*x) and exp(-I*x)
++        Icoeff = 0
++        e = None
++        for term in args:
++            coeff, expo = term.as_coeff_Mul()
++            if expo.func is exp and expo.args[0].is_Mul:
++                inside = expo.args[0]
++                if inside.is_Mul and inside.args[0] == I:
++                    # exp(I*x)
++                    Icoeff += coeff
++                    e = inside.args[1]
++                elif inside.is_Mul and inside.args[0] == -I:
++                    # exp(-I*x)
++                    Icoeff -= coeff
++                    e = inside.args[1]
++        if Icoeff == S.ImaginaryUnit:
++            return sin(e)
++        # Add more patterns here
++    return expr
++
+ ###############################################################################
+ ########################### TRIGONOMETRIC INVERSES ############################
+ ###############################################################################

@@ -1,0 +1,44 @@
+diff --git a/sympy/printing/latex.py b/sympy/printing/latex.py
+index 1edc712..5573fff 100644
+--- a/sympy/printing/latex.py
++++ b/sympy/printing/latex.py
+@@ -6,7 +6,7 @@ from __future__ import print_function, division
+ 
+ import itertools
+ 
+-from sympy.core import S, Add, Symbol, Mod
++from sympy.core import S, Add, Symbol, Mod, Mul, Pow
+ from sympy.core.function import _coeff_isneg
+ from sympy.core.sympify import SympifyError
+ from sympy.core.alphabets import greeks
+@@ -356,8 +356,28 @@ class LatexPrinter(Printer):
+         else:
+             tex = ""
+ 
+-        from sympy.simplify import fraction
+-        numer, denom = fraction(expr, exact=True)
++        from sympy.functions import exp
++        numer, denom = [], []
++        for term in Mul.make_args(expr):
++            if term.is_commutative and (term.is_Pow or term.func is exp):
++                b, ex = term.as_base_exp()
++                if ex.is_negative:
++                    if ex is S.NegativeOne:
++                        denom.append(b)
++                    elif ex.is_constant():
++                        denom.append(Pow(b, -ex))
++                    else:
++                        numer.append(term)
++                else:
++                    numer.append(term)
++            elif term.is_Rational:
++                n, d = term.as_numer_denom()
++                numer.append(n)
++                denom.append(d)
++            else:
++                numer.append(term)
++        numer = Mul(*numer, evaluate=False)
++        denom = Mul(*denom, evaluate=False)
+         separator = self._settings['mul_symbol_latex']
+         numbersep = self._settings['mul_symbol_latex_numbers']
+ 

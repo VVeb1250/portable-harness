@@ -1,0 +1,15 @@
+diff --git a/sympy/core/mul.py b/sympy/core/mul.py
+--- a/sympy/core/mul.py
++++ b/sympy/core/mul.py
+@@ -586,6 +586,11 @@
+                                                 c.is_real is not None)]
+             nc_part = [c for c in nc_part if not (fuzzy_not(c.is_zero) and
+                                                   c.is_real is not None)]
++            # complex infinity times a zero factor is undefined (e.g. a
++            # cancelled 0/0 sub-expression), not the structurally cancelled
++            # value -- the whole product must be nan.
++            if any(c.is_zero for c in c_part + nc_part):
++                return [S.NaN], [], order_symbols
+ 
+         # 0
+         elif coeff is S.Zero:

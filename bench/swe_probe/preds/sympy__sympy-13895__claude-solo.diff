@@ -1,0 +1,15 @@
+diff --git a/sympy/core/numbers.py b/sympy/core/numbers.py
+--- a/sympy/core/numbers.py
++++ b/sympy/core/numbers.py
+@@ -1699,6 +1699,11 @@
+             if isinstance(expt, Rational):
+                 if self.p != 1:
+                     # (4/3)**(5/6) -> 4**(5/6)*3**(-5/6)
++                    if self.p < 0:
++                        # a negative base must not be split across numerator
++                        # and denominator factors: it changes the branch, e.g.
++                        # ((-3*x-1)/12)**x != (-3*x-1)**x * 12**(-x) in general
++                        return
+                     return Integer(self.p)**expt*Integer(self.q)**(-expt)
+                 # as the above caught negative self.p, now self is positive
+                 return Integer(self.q)**Rational(

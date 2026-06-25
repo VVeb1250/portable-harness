@@ -1,0 +1,42 @@
+{
+  "instance_id": "sympy__sympy-13647",
+  "arms": {
+    "claude-solo": {
+      "claude_tokens": {
+        "input": 17953,
+        "output": 128
+      },
+      "resolved": true
+    },
+    "deepseek-solo": {
+      "deepseek_usage": {
+        "input_tokens": 66,
+        "output_tokens": 2296
+      },
+      "deepseek_usd": 0.000652,
+      "edit_misses": 0,
+      "resolved": true
+    },
+    "codex-solo": {
+      "codex_usage": {
+        "input_tokens": 416558,
+        "cached_input_tokens": 392704,
+        "output_tokens": 2717,
+        "reasoning_output_tokens": 399
+      },
+      "codex_turns": 8,
+      "resolved": true
+    },
+    "team3": {
+      "resolved": true,
+      "deepseek_usd": 0.00188,
+      "team_iters": 3,
+      "codex_usage": {
+        "input_tokens": 500577,
+        "output_tokens": 4464,
+        "reasoning_output_tokens": 2499
+      },
+      "codex_turns": 14
+    }
+  }
+}

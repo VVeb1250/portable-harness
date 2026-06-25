@@ -1,0 +1,245 @@
+diff --git a/sympy/matrices/sparse.py b/sympy/matrices/sparse.py
+--- a/sympy/matrices/sparse.py
++++ b/sympy/matrices/sparse.py
+@@ -946,6 +946,58 @@
+         self._smat = newD
+         self.cols -= 1
+ 
++
++        >>> from sympy import SparseMatrix, Matrix, ones
++        >>> A = SparseMatrix(ones(3))
++        >>> A
++        Matrix([
++        [1, 1, 1],
++        [1, 1, 1],
++        [1, 1, 1]])
++        >>> B = SparseMatrix.eye(3)
++        >>> B
++        Matrix([
++        [1, 0, 0],
++        [0, 1, 0],
++        [0, 0, 1]])
++        >>> C = A.col_join(B); C
++        Matrix([
++        [1, 1, 1],
++        [1, 1, 1],
++        [1, 1, 1],
++        [1, 0, 0],
++        [0, 1, 0],
++        [0, 0, 1]])
++        >>> C == A.col_join(Matrix(B))
++        True
++
++        Joining along columns is the same as appending rows at the end
++        of the matrix:
++
++        >>> C == A.row_insert(A.rows, Matrix(B))
++        True
++        """
++        if not self:
++            return type(self)(other)
++        A, B = self, other
++        if not A.cols == B.cols:
++            raise ShapeError()
++        A = A.copy()
++        if not isinstance(B, SparseMatrix):
++            k = 0
++            b = B._mat
++            for i in range(B.rows):
++                for j in range(B.cols):
++                    v = b[k]
++                    if v:
++                        A._smat[(i + A.rows, j)] = v
++                    k += 1
++        else:
++            for (i, j), v in B._smat.items():
++                A._smat[i + A.rows, j] = v
++        A.rows += B.rows
++        return A
++=======
+     def col_join(self, other):
+         """Returns B augmented beneath A (row-wise joining)::
+ 
+@@ -954,6 +1006,57 @@
+ 
+         Examples
+         ========
++
++        >>> from sympy import SparseMatrix, Matrix, ones
++        >>> A = SparseMatrix(ones(3))
++        >>> A
++        Matrix([
++        [1, 1, 1],
++        [1, 1, 1],
++        [1, 1, 1]])
++        >>> B = SparseMatrix.eye(3)
++        >>> B
++        Matrix([
++        [1, 0, 0],
++        [0, 1, 0],
++        [0, 0, 1]])
++        >>> C = A.col_join(B); C
++        Matrix([
++        [1, 1, 1],
++        [1, 1, 1],
++        [1, 1, 1],
++        [1, 0, 0],
++        [0, 1, 0],
++        [0, 0, 1]])
++        >>> C == A.col_join(Matrix(B))
++        True
++
++        Joining along columns is the same as appending rows at the end
++        of the matrix:
++
++        >>> C == A.row_insert(A.rows, Matrix(B))
++        True
++        """
++        if self.rows == 0 and self.cols == 0:
++            return type(self)(other)
++        A, B = self, other
++        if not A.cols == B.cols:
++            raise ShapeError()
++        A = A.copy()
++        if not isinstance(B, SparseMatrix):
++            k = 0
++            b = B._mat
++            for i in range(B.rows):
++                for j in range(B.cols):
++                    v = b[k]
++                    if v:
++                        A._smat[(i + A.rows, j)] = v
++                    k += 1
++        else:
++            for (i, j), v in B._smat.items():
++                A._smat[i + A.rows, j] = v
++        A.rows += B.rows
++        return A========
+ 
+         >>> from sympy import SparseMatrix, Matrix, ones
+         >>> A = SparseMatrix(ones(3))
+@@ -1156,13 +1259,6 @@
+         self._smat = newD
+         self.rows -= 1
+ 
+-    def row_join(self, other):
+-        """Returns B appended after A (column-wise augmenting)::
+-
+-            [A B]
+-
+-        Examples
+-        ========
+ 
+         >>> from sympy import SparseMatrix, Matrix
+         >>> A = SparseMatrix(((1, 0, 1), (0, 1, 0), (1, 1, 0)))
+@@ -1211,6 +1307,110 @@
+                 A._smat[(i, j + A.cols)] = v
+         A.cols += B.cols
+         return A
++=======
++    def row_join(self, other):
++        """Returns B appended after A (column-wise augmenting)::
++
++            [A B]
++
++        Examples
++        ========
++
++        >>> from sympy import SparseMatrix, Matrix
++        >>> A = SparseMatrix(((1, 0, 1), (0, 1, 0), (1, 1, 0)))
++        >>> A
++        Matrix([
++        [1, 0, 1],
++        [0, 1, 0],
++        [1, 1, 0]])
++        >>> B = SparseMatrix(((1, 0, 0), (0, 1, 0), (0, 0, 1)))
++        >>> B
++        Matrix([
++        [1, 0, 0],
++        [0, 1, 0],
++        [0, 0, 1]])
++        >>> C = A.row_join(B); C
++        Matrix([
++        [1, 0, 1, 1, 0, 0],
++        [0, 1, 0, 0, 1, 0],
++        [1, 1, 0, 0, 0, 1]])
++        >>> C == A.row_join(Matrix(B))
++        True
++
++        Joining at row ends is the same as appending columns at the end
++        of the matrix:
++
++        >>> C == A.col_insert(A.cols, B)
++        True
++        """
++        if self.rows == 0 and self.cols == 0:
++            return type(self)(other)
++        A, B = self, other
++        if not A.rows == B.rows:
++            raise ShapeError()
++        A = A.copy()
++        if not isinstance(B, SparseMatrix):
++            k = 0
++            b = B._mat
++            for i in range(B.rows):
++                for j in range(B.cols):
++                    v = b[k]
++                    if v:
++                        A._smat[(i, j + A.cols)] = v
++                    k += 1
++        else:
++            for (i, j), v in B._smat.items():
++                A._smat[(i, j + A.cols)] = v
++        A.cols += B.cols
++        return A========
++
++        >>> from sympy import SparseMatrix, Matrix
++        >>> A = SparseMatrix(((1, 0, 1), (0, 1, 0), (1, 1, 0)))
++        >>> A
++        Matrix([
++        [1, 0, 1],
++        [0, 1, 0],
++        [1, 1, 0]])
++        >>> B = SparseMatrix(((1, 0, 0), (0, 1, 0), (0, 0, 1)))
++        >>> B
++        Matrix([
++        [1, 0, 0],
++        [0, 1, 0],
++        [0, 0, 1]])
++        >>> C = A.row_join(B); C
++        Matrix([
++        [1, 0, 1, 1, 0, 0],
++        [0, 1, 0, 0, 1, 0],
++        [1, 1, 0, 0, 0, 1]])
++        >>> C == A.row_join(Matrix(B))
++        True
++
++        Joining at row ends is the same as appending columns at the end
++        of the matrix:
++
++        >>> C == A.col_insert(A.cols, B)
++        True
++        """
++        if not self:
++            return type(self)(other)
++        A, B = self, other
++        if not A.rows == B.rows:
++            raise ShapeError()
++        A = A.copy()
++        if not isinstance(B, SparseMatrix):
++            k = 0
++            b = B._mat
++            for i in range(B.rows):
++                for j in range(B.cols):
++                    v = b[k]
++                    if v:
++                        A._smat[(i, j + A.cols)] = v
++                    k += 1
++        else:
++            for (i, j), v in B._smat.items():
++                A._smat[(i, j + A.cols)] = v
++        A.cols += B.cols
++        return A
+ 
+     def row_op(self, i, f):
+         """In-place operation on row ``i`` using two-arg functor whose args are

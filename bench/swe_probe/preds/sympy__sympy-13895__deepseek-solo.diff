@@ -1,0 +1,16 @@
+diff --git a/sympy/core/numbers.py b/sympy/core/numbers.py
+--- a/sympy/core/numbers.py
++++ b/sympy/core/numbers.py
+@@ -2627,6 +2627,12 @@
+             if expt is S.Half:
+                 return S.ImaginaryUnit
+             if isinstance(expt, Rational):
++                if expt.q % 2 == 1:
++                    # odd denominator: real root exists
++                    if expt.p % 2 == 0:
++                        return S.One
++                    else:
++                        return S.NegativeOne
+                 if expt.q == 2:
+                     return S.ImaginaryUnit**Integer(expt.p)
+                 i, r = divmod(expt.p, expt.q)
