@@ -46,6 +46,7 @@ class SkillRouterBenchTests(unittest.TestCase):
         predictions = [
             {
                 "required": ["alpha"],
+                "accepted": [["alpha", "alpha-compatible"]],
                 "predicted": ["alpha", "beta"],
                 "context_tokens": 20,
                 "latency_ms": 10.0,
@@ -71,6 +72,24 @@ class SkillRouterBenchTests(unittest.TestCase):
         self.assertEqual(metrics["silence_accuracy"], 1.0)
         self.assertEqual(metrics["precision_at_k"], 0.5)
         self.assertEqual(metrics["mean_context_tokens"], 12.0)
+
+    def test_compatible_alternative_counts_as_full_coverage(self) -> None:
+        metrics = evaluate_predictions(
+            [
+                {
+                    "required": ["tdd-workflow"],
+                    "accepted": [["tdd-workflow", "tdd"]],
+                    "predicted": ["tdd"],
+                    "context_tokens": 10,
+                    "latency_ms": 1.0,
+                    "language": "tr",
+                }
+            ]
+        )
+
+        self.assertEqual(metrics["recall_at_k"], 1.0)
+        self.assertEqual(metrics["precision_at_k"], 1.0)
+        self.assertEqual(metrics["full_coverage"], 1.0)
 
     def test_manifest_hashes_inputs_and_names_all_arms(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
