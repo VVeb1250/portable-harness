@@ -1,6 +1,6 @@
 {
-  "schema_version": "0.3.1",
-  "_comment": "Curated SETS = bundles vetted to be quality AND compatible together. NOT a per-tool registry (Smithery/mcpm do that). See port-a-whip-spec.md v0.3.",
+  "schema_version": "0.4.0",
+  "_comment": "Curated SETS = bundles vetted for portability, token reduction, and quality. catalog_status distinguishes install-ready sets from conditional, detect-first, candidate, and deferred surfaces.",
   "sets": [
     {
       "set_name": "efficiency-starter",
@@ -279,7 +279,10 @@
           "kind": "cli + daemon",
           "kind_axis": "graph-search rival to codegraph",
           "license": "Apache-2.0",
-          "note": "Graph-search engine (resolved symbol edges, 'who calls this') claiming 3-50x token cuts vs grep workflows (vendor-claimed, zzet.org write-up 2026). RIVAL to the codegraph anchor, NOT additive — never load both. Held out of the set: (1) needs a resident DAEMON (friction vs paw's no-daemon lean), (2) no paw bench vs codegraph's measured proxy + ROP capability run. Re-evaluate only via a head-to-head A/B (DOGFOOD-PENDING class).",
+          "version": "v0.52.0",
+          "catalog_status": "deferred",
+          "adoption_mode": "cli-augment-only",
+          "note": "Deep-vetted 2026-06-25. Portable signed Go binary and Apache-2.0 current license; local Windows install and index succeeded. Head-to-head verdict remains AUGMENT-only: strong multi-repo semantic/symbol discovery, but not a drop-in replacement for CodeGraph's focused callers/impact workflow. Default init/install writes many repo and user artifacts and the daemon/index has material RAM/disk cost. Never run `gortex init` through paw. If explicitly chosen, use scoped `gortex track` plus CLI queries, or an MCP readonly/minimal tool preset. Do not load Gortex and CodeGraph as default anchors together.",
           "axis": "down-token (graph), vendor-claimed"
         },
         {
@@ -1327,6 +1330,642 @@
         "config_block_confirmed": "n/a for CLI anchor; markitdown-mcp config shape from official package README (command markitdown-mcp), not host-captured",
         "token_profile_benchmarked": false,
         "hosts": ["claude-code"]
+      }
+    },
+    {
+      "set_name": "harness-foundation",
+      "catalog_status": "detect-first",
+      "description": "Cross-harness workflow foundation. Detect and reuse an existing ECC installation before adding paw's narrower catalog, memory, measurement, and routing layers. Never stack ECC plugin and full/manual installs.",
+      "trigger_terms": [
+        "install ecc",
+        "agent skills",
+        "cross harness",
+        "claude plugin",
+        "codex plugin",
+        "rules",
+        "hooks",
+        "agent foundation"
+      ],
+      "decision": {
+        "portable": true,
+        "token": "Mixed. Skills are progressively loaded, but broad rule/MCP profiles can add recurring context cost. Selective install is mandatory.",
+        "quality": "High leverage: mature skills, verification, security, and research workflows across major harnesses.",
+        "verdict": "ADOPT AS DETECT-FIRST FOUNDATION, not as a blind bundle install."
+      },
+      "token_profile": {
+        "method": "Foundation-class. Measure the selected ECC profile and active MCP inventory per host; do not assign one global saving.",
+        "hosts": {
+          "claude-code": {
+            "provenance": "observed",
+            "delta_pct": null,
+            "idle_def_tokens": null,
+            "note": "Native plugin is the preferred path. Install only selected rules after the plugin; never stack the full installer."
+          },
+          "codex": {
+            "provenance": "observed",
+            "delta_pct": null,
+            "idle_def_tokens": null,
+            "note": "Codex plugin and shared SKILL.md source are supported. Paw must preserve user-owned model, auth, and MCP configuration."
+          },
+          "gemini": {
+            "provenance": "vendor-claimed",
+            "delta_pct": null,
+            "idle_def_tokens": null,
+            "note": "Install/instruction compatibility exists but hook parity is host-tiered."
+          }
+        }
+      },
+      "mcp": [],
+      "non_mcp": [
+        {
+          "tool": "ecc",
+          "display_name": "Everything Claude Code (ECC)",
+          "ref": "affaan-m/everything-claude-code",
+          "license": "MIT",
+          "version": "v2.0.0",
+          "kind": "host-foundation",
+          "health_binary": null,
+          "purpose": "Reusable skills, rules, hooks, MCP references, selective installer manifests, and lifecycle tooling shared across Claude Code, Codex, Cursor, OpenCode, Gemini, and other harnesses.",
+          "install_policy": "detect-first",
+          "install": [
+            {
+              "label": "Claude Code: add official ECC marketplace",
+              "cmd": "claude plugin marketplace add affaan-m/everything-claude-code",
+              "host": "claude-code",
+              "runs_vendor_code": true
+            },
+            {
+              "label": "Claude Code: install ECC plugin",
+              "cmd": "claude plugin install ecc@ecc",
+              "host": "claude-code",
+              "runs_vendor_code": true
+            },
+            {
+              "label": "Codex: add official ECC marketplace",
+              "cmd": "codex plugin marketplace add affaan-m/everything-claude-code",
+              "host": "codex",
+              "runs_vendor_code": true
+            },
+            {
+              "label": "Codex: install ECC plugin",
+              "cmd": "codex plugin add ecc@ecc",
+              "host": "codex",
+              "runs_vendor_code": true
+            }
+          ],
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "opencode"
+          ],
+          "source_urls": [
+            "https://github.com/affaan-m/everything-claude-code",
+            "https://github.com/affaan-m/everything-claude-code/blob/main/docs/architecture/cross-harness.md"
+          ]
+        }
+      ],
+      "compat_notes": "ECC overlaps paw's generic harness surface heavily. Paw should query installed ECC state and consume its skills/adapters rather than copy them again. Paw remains the curated capability catalog, empirical token/quality ledger, ICM-backed mistake memory, and just-in-time router. Before any install, detect plugin/manual state and reject stacked installation methods.",
+      "verified": {
+        "date": "2026-06-25",
+        "status": "official v2.0.0 docs reviewed; local Claude Code 2.1.190 and Codex 0.141.0 both expose plugin management commands. Actual isolated install trial remains part of the linker CI phase.",
+        "hosts": [
+          "claude-code",
+          "codex"
+        ]
+      }
+    },
+    {
+      "set_name": "context-workbench",
+      "catalog_status": "conditional",
+      "description": "Large-output context workbench for logs, multi-file analysis, documentation indexing, and web capture. Raw bytes stay outside the model context and only derived or retrieved slices return.",
+      "trigger_terms": [
+        "large file",
+        "huge log",
+        "many files",
+        "bulk output",
+        "index docs",
+        "search indexed content",
+        "context overflow",
+        "compaction"
+      ],
+      "decision": {
+        "portable": true,
+        "token": "Strong on routed bulky workloads; local paw A/B measured about 98% savings for indexed lexical retrieval. Static MCP definition cost is high when loaded eagerly.",
+        "quality": "Improves analysis by preserving exact searchable evidence, but lexical retrieval needs keyword-rich queries and routing discipline.",
+        "verdict": "ADOPT CONDITIONALLY at project scope. Do not enable globally or for small-output repos."
+      },
+      "token_profile": {
+        "method": "paw deterministic A/B plus live project replay. Measure savings and compliance per project.",
+        "hosts": {
+          "claude-code": {
+            "provenance": "measured",
+            "delta_pct": null,
+            "idle_def_tokens": 7900,
+            "note": "Bulky calls can save 98%+, but project replay showed low routing compliance. Keep opt-in."
+          },
+          "codex": {
+            "provenance": "measured",
+            "delta_pct": null,
+            "idle_def_tokens": 7900,
+            "note": "Hooks work on current Codex builds, but PreToolUse input rewrite remains limited. This project is the live test surface."
+          },
+          "gemini": {
+            "provenance": "vendor-claimed",
+            "delta_pct": null,
+            "idle_def_tokens": 7900,
+            "note": "MCP plus native hooks supported; still workload-gated."
+          }
+        }
+      },
+      "mcp": [
+        {
+          "tool": "context-mode",
+          "display_name": "Context Mode",
+          "ref": "mksglu/context-mode",
+          "license": "Elastic-2.0",
+          "version": "v1.0.166",
+          "kind": "mcp-stdio+hooks",
+          "health_binary": "context-mode",
+          "purpose": "Sandbox and process large command/file/web output outside the conversation; persist searchable FTS5 evidence and session events; return only bounded derived results.",
+          "tool_count": 11,
+          "mcp_config": {
+            "command": "context-mode",
+            "args": [],
+            "env": {}
+          },
+          "mcp_config_per_host": {
+            "claude": {
+              "_target": "Claude plugin preferred; MCP fallback available",
+              "command": "context-mode",
+              "args": []
+            },
+            "codex": {
+              "_target": "~/.codex/config.toml [mcp_servers.context-mode]",
+              "command": "context-mode",
+              "args": []
+            },
+            "gemini": {
+              "_target": "~/.gemini/settings.json mcpServers.context-mode",
+              "command": "context-mode",
+              "args": []
+            }
+          },
+          "install": [
+            {
+              "label": "install context-mode CLI",
+              "cmd": "npm install --global context-mode",
+              "runs_vendor_code": true
+            }
+          ],
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "opencode",
+            "vscode-copilot"
+          ],
+          "source_urls": [
+            "https://github.com/mksglu/context-mode",
+            "https://github.com/mksglu/context-mode/blob/main/docs/platform-support.md"
+          ]
+        }
+      ],
+      "non_mcp": [],
+      "compat_notes": "Complements RTK: RTK compresses known shell outputs inline; context-mode is the avoid-the-dump and searchable-evidence lane for arbitrary bulky data. Overlaps ICM only in storage shape: ICM remains semantic durable memory, while context-mode stores session evidence and lexical FTS5 chunks. License permits local use and modification but forbids offering a competing hosted/managed service.",
+      "verified": {
+        "date": "2026-06-25",
+        "status": "LIVE on Windows/Codex. `context-mode doctor` passes storage, server, FTS5, and six Codex hooks. Local v1.0.166. Paw A/B evidence in docs/BENCH.md.",
+        "hosts": [
+          "codex"
+        ]
+      }
+    },
+    {
+      "set_name": "repo-pack",
+      "catalog_status": "ready",
+      "description": "Deterministically package a selected repository subtree, git diff, or file set into a token-counted prompt artifact instead of repeated exploration and manual copying.",
+      "trigger_terms": [
+        "pack repo",
+        "repository context",
+        "share codebase",
+        "prompt file",
+        "token budget",
+        "git diff context",
+        "subtree context"
+      ],
+      "decision": {
+        "portable": true,
+        "token": "Cuts repeated file-discovery calls and makes context size explicit. It does not guarantee a smaller result unless scope and filters are used.",
+        "quality": "Improves completeness and reproducibility of handoffs by preserving a deterministic source tree, file set, and git context.",
+        "verdict": "ADOPT code2prompt as the zero-daemon anchor; keep Repomix optional for Tree-sitter compression and Secretlint."
+      },
+      "token_profile": {
+        "method": "Token-counted artifact producer. Compare packed artifact against the actual exploration trace for each workflow.",
+        "hosts": {
+          "claude-code": {
+            "provenance": "measured",
+            "delta_pct": null,
+            "idle_def_tokens": 0,
+            "note": "CLI on demand; local docs pack and git-diff pack verified."
+          },
+          "codex": {
+            "provenance": "neutral",
+            "delta_pct": null,
+            "idle_def_tokens": 0,
+            "note": "Same CLI artifact works across hosts."
+          },
+          "gemini": {
+            "provenance": "neutral",
+            "delta_pct": null,
+            "idle_def_tokens": 0,
+            "note": "Same CLI artifact works across hosts."
+          }
+        }
+      },
+      "mcp": [],
+      "non_mcp": [
+        {
+          "tool": "code2prompt",
+          "display_name": "Code2Prompt",
+          "ref": "mufeedvh/code2prompt",
+          "license": "MIT",
+          "version": "v4.2.0",
+          "kind": "cli",
+          "health_binary": "code2prompt",
+          "purpose": "Fast Rust repo packer with git-aware filtering, source tree, templates, token counting, and diff/log context. Produces stdout or a file for any agent host.",
+          "install": [
+            {
+              "label": "install with Cargo",
+              "cmd": "cargo install code2prompt",
+              "runs_vendor_code": true
+            }
+          ],
+          "release_assets": {
+            "windows-x86_64": "code2prompt-x86_64-pc-windows-msvc.exe",
+            "linux-x86_64": "code2prompt-x86_64-unknown-linux-gnu",
+            "macos-x86_64": "code2prompt-x86_64-apple-darwin",
+            "macos-arm64": "code2prompt-aarch64-apple-darwin"
+          },
+          "usage_hint": "code2prompt src -O -   |   code2prompt . -d -O diff-context.md   |   always scope/includes before packing a large repo",
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "opencode"
+          ],
+          "source_urls": [
+            "https://github.com/mufeedvh/code2prompt",
+            "https://github.com/mufeedvh/code2prompt/releases/tag/v4.2.0"
+          ]
+        }
+      ],
+      "optional_sources": [
+        {
+          "tool": "repomix",
+          "kind": "cli",
+          "ref": "yamadashy/repomix",
+          "license": "MIT",
+          "catalog_status": "optional",
+          "note": "Mature Node-based challenger with Secretlint, Tree-sitter signature compression, token-budget guard, watch mode, and remote-repo support. Prefer when compression/security scanning matters more than code2prompt's single-binary simplicity. Do not install both by default."
+        }
+      ],
+      "compat_notes": "Context producer, not a code-intelligence replacement. Compose with context-mode by writing a pack to disk, indexing it, then retrieving slices. Do not dump whole-repo packs into context by default.",
+      "verified": {
+        "date": "2026-06-25",
+        "status": "code2prompt v4.2.0 installed in repo-local bin and runtime verified on Windows. Existing GitHub workflow downloads and executes official binaries on Windows, Linux, Intel macOS, and Apple Silicon macOS.",
+        "hosts": [
+          "claude-code",
+          "codex"
+        ]
+      }
+    },
+    {
+      "set_name": "test-affected",
+      "catalog_status": "conditional",
+      "description": "Run the tests a change can actually affect, reducing feedback time and test-log context while preserving a conservative full-suite fallback.",
+      "trigger_terms": [
+        "affected tests",
+        "changed tests",
+        "test selection",
+        "slow test suite",
+        "run related tests",
+        "test feedback"
+      ],
+      "decision": {
+        "portable": true,
+        "token": "Fewer executed tests means less log output and less agent context. Benefit grows with suite size.",
+        "quality": "Faster feedback enables more frequent verification; safe only with a full-suite fallback for config/cache uncertainty.",
+        "verdict": "ADOPT pytest-testmon for Python. Keep the set language-tiered and use native runner features before young universal wrappers."
+      },
+      "token_profile": {
+        "method": "Measure selected tests, wall time, and emitted log tokens versus the full suite.",
+        "hosts": {
+          "claude-code": {
+            "provenance": "measured",
+            "delta_pct": null,
+            "idle_def_tokens": 0,
+            "note": "Local Python probe selected 4/14 router tests and excluded unrelated blackboard tests."
+          },
+          "codex": {
+            "provenance": "neutral",
+            "delta_pct": null,
+            "idle_def_tokens": 0,
+            "note": "Pytest plugin behavior is host-independent."
+          },
+          "gemini": {
+            "provenance": "neutral",
+            "delta_pct": null,
+            "idle_def_tokens": 0,
+            "note": "Pytest plugin behavior is host-independent."
+          }
+        }
+      },
+      "mcp": [],
+      "non_mcp": [
+        {
+          "tool": "pytest-testmon",
+          "display_name": "pytest-testmon",
+          "ref": "tarpas/pytest-testmon",
+          "license": "MIT",
+          "version": "v2.2.0",
+          "kind": "pytest-plugin",
+          "health_binary": null,
+          "language_scope": [
+            "python"
+          ],
+          "purpose": "Coverage-based dependency map selects tests affected by changed Python code and updates its local .testmondata cache after each run.",
+          "install": [
+            {
+              "label": "install pytest-testmon",
+              "cmd": "python -m pip install pytest-testmon",
+              "runs_vendor_code": true
+            }
+          ],
+          "usage_hint": "First run: python -m pytest --testmon   |   later runs select affected tests   |   use --testmon-noselect when safety requires full execution",
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "opencode"
+          ],
+          "source_urls": [
+            "https://github.com/tarpas/pytest-testmon",
+            "https://www.testmon.org/"
+          ]
+        }
+      ],
+      "optional_sources": [
+        {
+          "tool": "vitest-affected",
+          "kind": "vitest-plugin",
+          "catalog_status": "candidate",
+          "note": "Promising runtime dependency selection for Vitest, but young and single-project. Require an independent fixture benchmark before promotion."
+        },
+        {
+          "tool": "native-runner-selection",
+          "kind": "instructions",
+          "catalog_status": "preferred-when-available",
+          "note": "Use Jest/Vitest changed/related modes, Cargo nextest filters, Go package targeting, or monorepo-native affected commands before adding another global wrapper."
+        }
+      ],
+      "compat_notes": "The cache is project state, not user state; gitignore `.testmondata`. Cache miss or unsupported configuration must fall back to the full suite. Do not claim language universality from the Python anchor.",
+      "verified": {
+        "date": "2026-06-25",
+        "status": "pytest-testmon v2.2.0 installed and locally vetted. Baseline 23 tests; no-change and comment-only edits selected zero; a real router edit selected 4/14 router tests at about 8x lower runtime on this small repo.",
+        "hosts": [
+          "claude-code",
+          "codex"
+        ]
+      }
+    },
+    {
+      "set_name": "quality-gate",
+      "catalog_status": "candidate",
+      "description": "Portable deterministic preflight gates that catch repository, CI, and documentation defects before an agent spends another reasoning or CI loop on them.",
+      "trigger_terms": [
+        "pre commit",
+        "quality gate",
+        "workflow yaml",
+        "github actions",
+        "broken links",
+        "lint staged",
+        "before commit"
+      ],
+      "decision": {
+        "portable": true,
+        "token": "Indirect but credible: fail fast with bounded diagnostics instead of shipping changes into long CI logs and repeated repair loops.",
+        "quality": "Strong deterministic checks for hook orchestration, GitHub Actions semantics/security, and documentation links.",
+        "verdict": "CANDIDATE. Add to installer only after pinned cross-OS smoke tests and a compact-output probe."
+      },
+      "token_profile": {
+        "method": "No saving claimed yet. Measure avoided CI/log tokens and diagnostic size after cross-OS smoke tests.",
+        "hosts": {
+          "claude-code": {
+            "provenance": "neutral",
+            "delta_pct": null,
+            "idle_def_tokens": 0,
+            "note": "All tools are CLI/hooks on demand."
+          },
+          "codex": {
+            "provenance": "neutral",
+            "delta_pct": null,
+            "idle_def_tokens": 0,
+            "note": "All tools are CLI/hooks on demand."
+          },
+          "gemini": {
+            "provenance": "neutral",
+            "delta_pct": null,
+            "idle_def_tokens": 0,
+            "note": "All tools are CLI/hooks on demand."
+          }
+        }
+      },
+      "mcp": [],
+      "non_mcp": [
+        {
+          "tool": "prek",
+          "display_name": "prek",
+          "ref": "j178/prek",
+          "license": "MIT",
+          "version": "v0.4.5",
+          "kind": "cli+git-hooks",
+          "health_binary": "prek",
+          "purpose": "Fast Rust, single-binary, pre-commit-compatible hook manager with monorepo support and shared toolchain environments.",
+          "install": [
+            {
+              "label": "install prek",
+              "cmd": "uv tool install prek",
+              "runs_vendor_code": true
+            }
+          ],
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "opencode"
+          ],
+          "source_urls": [
+            "https://github.com/j178/prek",
+            "https://prek.j178.dev/"
+          ]
+        },
+        {
+          "tool": "actionlint",
+          "display_name": "actionlint",
+          "ref": "rhysd/actionlint",
+          "license": "MIT",
+          "version": "v1.7.12",
+          "kind": "cli",
+          "health_binary": "actionlint",
+          "purpose": "Static checker for GitHub Actions syntax, expressions, action inputs, reusable workflows, script injection, credentials, runner labels, cron, and dependency errors.",
+          "install": [
+            {
+              "label": "install actionlint with Go",
+              "cmd": "go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12",
+              "runs_vendor_code": true
+            }
+          ],
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "opencode"
+          ],
+          "source_urls": [
+            "https://github.com/rhysd/actionlint",
+            "https://github.com/rhysd/actionlint/blob/v1.7.12/docs/install.md"
+          ]
+        },
+        {
+          "tool": "lychee",
+          "display_name": "Lychee",
+          "ref": "lycheeverse/lychee",
+          "license": "Apache-2.0",
+          "version": "v0.24.2",
+          "kind": "cli",
+          "health_binary": "lychee",
+          "purpose": "Fast link checker for Markdown, HTML, websites, and text with structured output, retries, throttling, fragment checks, and a maintained GitHub Action.",
+          "install": [
+            {
+              "label": "install lychee",
+              "cmd": {
+                "windows": "winget install --id lycheeverse.lychee",
+                "macos": "brew install lychee",
+                "linux": "cargo install lychee"
+              },
+              "runs_vendor_code": true
+            }
+          ],
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "opencode"
+          ],
+          "source_urls": [
+            "https://github.com/lycheeverse/lychee",
+            "https://lychee.cli.rs/"
+          ]
+        }
+      ],
+      "compat_notes": "These tools compose rather than overlap: prek schedules repository hooks, actionlint validates Actions workflows, and lychee validates links. Keep language-specific linters in project dependencies instead of making paw install one universal linter.",
+      "verified": {
+        "date": "2026-06-25",
+        "status": "Primary-source deep-vet passed for portability, maintenance, license, and deterministic value. Cross-OS smoke wired (.github/workflows/bundle-smoke.yml: prek v0.4.5 + actionlint v1.7.12 + lychee v0.24.2 prebuilt download->version->behavioral probe on linux-x64/macos-x64/macos-arm64/windows-x64). windows-x64 proven locally 2026-06-26 (all three ran; actionlint flagged a broken workflow, lychee resolved an offline link); linux + macOS columns pending first CI dispatch. Promote candidate->ready after the 4-OS matrix is green. Output-size benchmark still pending.",
+        "hosts": []
+      }
+    },
+    {
+      "set_name": "api-quality",
+      "catalog_status": "candidate",
+      "description": "Language-agnostic HTTP/API contract tests expressed as reviewable text, with compact test output and CI reports instead of ad-hoc curl sessions and large response dumps.",
+      "trigger_terms": [
+        "api test",
+        "http contract",
+        "rest test",
+        "graphql test",
+        "integration test",
+        "endpoint validation",
+        "curl"
+      ],
+      "decision": {
+        "portable": true,
+        "token": "Test mode suppresses successful response bodies and emits a compact summary; failures can opt into long evidence.",
+        "quality": "High: deterministic chained requests, captures, JSONPath/XPath assertions, status/header/body checks, and CI reports.",
+        "verdict": "CANDIDATE. Strong category fit; promote after Windows/Linux/macOS binary smoke and a fixture-based output comparison."
+      },
+      "token_profile": {
+        "method": "Compare curl/raw response workflow against `hurl --test` summary and failure evidence on the same API fixture.",
+        "hosts": {
+          "claude-code": {
+            "provenance": "vendor-claimed",
+            "delta_pct": null,
+            "idle_def_tokens": 0,
+            "note": "Single CLI binary, no MCP definitions."
+          },
+          "codex": {
+            "provenance": "vendor-claimed",
+            "delta_pct": null,
+            "idle_def_tokens": 0,
+            "note": "Single CLI binary, no MCP definitions."
+          },
+          "gemini": {
+            "provenance": "vendor-claimed",
+            "delta_pct": null,
+            "idle_def_tokens": 0,
+            "note": "Single CLI binary, no MCP definitions."
+          }
+        }
+      },
+      "mcp": [],
+      "non_mcp": [
+        {
+          "tool": "hurl",
+          "display_name": "Hurl",
+          "ref": "Orange-OpenSource/hurl",
+          "license": "Apache-2.0",
+          "version": "v8.0.1",
+          "kind": "cli",
+          "health_binary": "hurl",
+          "purpose": "Plain-text HTTP client and test runner for REST, GraphQL, SOAP, HTML, and XML with captures, assertions, parallel test mode, and JSON/JUnit/TAP/HTML reports.",
+          "install": [
+            {
+              "label": "install Hurl",
+              "cmd": {
+                "windows": "winget install Orange-OpenSource.Hurl",
+                "macos": "brew install hurl",
+                "linux": "cargo install hurl"
+              },
+              "runs_vendor_code": true
+            }
+          ],
+          "usage_hint": "hurl --test tests/api/*.hurl   |   use --error-format long only when compact failure output is insufficient",
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "opencode"
+          ],
+          "source_urls": [
+            "https://github.com/Orange-OpenSource/hurl",
+            "https://hurl.dev/docs/running-tests.html"
+          ]
+        }
+      ],
+      "compat_notes": "Complements browser-automation: Hurl verifies HTTP contracts without a browser; browser-harness remains for JS-rendered interaction and visual/user flows. Complements secure-agent by keeping credentials in variables/environment instead of committed test files.",
+      "verified": {
+        "date": "2026-06-25",
+        "status": "Primary-source deep-vet passed. Hurl is mature, cross-platform, single-binary, and CI-oriented. Cross-OS smoke wired (.github/workflows/bundle-smoke.yml: hurl v8.0.1 prebuilt download->--version on linux-x64/macos-x64/macos-arm64/windows-x64). windows-x64 proven locally 2026-06-26; linux + macOS columns pending first CI dispatch. Promote candidate->ready after the 4-OS matrix is green plus a fixture-based compact-output comparison.",
+        "hosts": []
       }
     }
   ]
