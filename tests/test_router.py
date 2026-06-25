@@ -82,6 +82,13 @@ class RouterV0Tests(unittest.TestCase):
 
 
 class SmartRouterTests(unittest.TestCase):
+    def test_invalid_empty_task_and_negative_budget_stop(self) -> None:
+        empty = route(RouteRequest(task=""))
+        negative = route(RouteRequest(task="work", max_budget_usd=-0.01))
+
+        self.assertEqual(empty.strategy, "stop")
+        self.assertEqual(negative.strategy, "stop")
+
     def test_auto_complexity_keeps_tiny_documentation_work_solo(self) -> None:
         decision = route(
             RouteRequest(
@@ -163,6 +170,78 @@ class SmartRouterTests(unittest.TestCase):
         self.assertEqual(decision.status, "error")
         self.assertEqual(decision.strategy, "stop")
         self.assertTrue(decision.next_actions)
+
+    def test_restricted_route_stops_when_safe_agent_is_unavailable(self) -> None:
+        decision = route(
+            RouteRequest(
+                task="Fix proprietary code.",
+                complexity="simple",
+                risk="low",
+                sensitivity="restricted",
+                available_agents=("deepseek",),
+            )
+        )
+
+        self.assertEqual(decision.strategy, "stop")
+        self.assertIn("privacy:restricted", decision.constraints)
+
+    def test_single_agent_inventory_uses_explicit_warning_fallbacks(self) -> None:
+        codex = route(
+            RouteRequest(
+                task="Refactor parser architecture.",
+                complexity="complex",
+                risk="medium",
+                sensitivity="public",
+                available_agents=("codex",),
+            )
+        )
+        deepseek = route(
+            RouteRequest(
+                task="Refactor parser architecture.",
+                complexity="complex",
+                risk="medium",
+                sensitivity="public",
+                available_agents=("deepseek",),
+            )
+        )
+
+        self.assertEqual(codex.status, "warning")
+        self.assertEqual(codex.roles, {"implementer": "codex"})
+        self.assertEqual(deepseek.status, "warning")
+        self.assertEqual(deepseek.roles, {"implementer": "deepseek"})
+        self.assertEqual(codex.to_dict()["strategy"], "solo")
+
+    def test_auto_classification_recognizes_research_and_long_scope(self) -> None:
+        decision = route(
+            RouteRequest(
+                task=(
+                    "Research and compare the current implementations across all supported "
+                    "hosts, verify their behavior, collect evidence, identify portability "
+                    "gaps, and propose a migration plan with tests and rollback guidance."
+                ),
+                complexity="auto",
+                risk="auto",
+                sensitivity="public",
+            )
+        )
+
+        self.assertEqual(decision.classification["task_kind"], "research")
+        self.assertEqual(decision.classification["complexity"], "complex")
+
+    def test_restricted_simple_route_uses_codex_solo_when_budget_allows(self) -> None:
+        decision = route(
+            RouteRequest(
+                task="Rename a private symbol.",
+                complexity="simple",
+                risk="low",
+                sensitivity="restricted",
+                max_budget_usd=1.10,
+            )
+        )
+
+        self.assertEqual(decision.strategy, "solo")
+        self.assertEqual(decision.roles, {"implementer": "codex"})
+        self.assertEqual(decision.estimated_cost_usd, 1.05)
 
 
 if __name__ == "__main__":
