@@ -29,6 +29,10 @@ bench/.venv-*/
 # testmon (test-affected set) local selection cache
 .testmondata
 
+# paw linker ownership ledger + context-file backups (local state)
+.paw/
+*.paw-bak-*
+
 # fetched-per-host tool binaries — CI/install UX downloads from upstream releases
 bin/
 # bench-local vendored CLI binaries (downloaded from upstream releases, regenerable)

@@ -19,6 +19,7 @@ from paw.blackboard import (
     BlackboardScope,
     IcmBlackboard,
 )
+from paw.linker import LinkerError, apply_plan, build_plan, remove, verify
 from paw.router import RouteRequest, route
 from paw.sets.loader import SetsError, get_set, load_all
 
@@ -117,6 +118,64 @@ def _blackboard(args: argparse.Namespace) -> int:
     return _print_blackboard_result(result, args.json)
 
 
+def _print_tx(result, as_json: bool) -> int:
+    if as_json:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        return 0 if result.status in ("ok", "blocked") else 1
+    print(result.summary)
+    for check in getattr(result, "checks", ()):
+        print(f"  · {check}")
+    if result.backup:
+        print(f"  backup: {result.backup}")
+    for action in result.next_actions:
+        print(f"  next: {action}")
+    return 0 if result.status in ("ok", "blocked") else 1
+
+
+def _linker(args: argparse.Namespace) -> int:
+    try:
+        if args.group == "plan":
+            plan = build_plan(
+                args.set, args.host, context=args.context, scope=args.scope
+            )
+            if args.json:
+                print(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2))
+            else:
+                print(plan.summary)
+                for action in plan.actions:
+                    flag = " (needs approval)" if action.requires_approval else ""
+                    print(f"  [{action.kind}] {action.summary}{flag}")
+                for warning in plan.warnings:
+                    print(f"  ! {warning}")
+            return 0 if plan.status == "ok" else 1
+        if args.group == "apply":
+            plan = build_plan(
+                args.set, args.host, context=args.context, scope=args.scope
+            )
+            return _print_tx(apply_plan(plan), args.json)
+        if args.group == "verify":
+            return _print_tx(
+                verify(args.set, host=args.host, context=args.context), args.json
+            )
+        if args.group == "remove":
+            return _print_tx(
+                remove(args.set, host=args.host, context=args.context), args.json
+            )
+    except (SetsError, LinkerError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    return 2
+
+
+def _add_linker_args(parser: argparse.ArgumentParser, *, with_scope: bool) -> None:
+    parser.add_argument("set")
+    parser.add_argument("--host", default="claude-code")
+    parser.add_argument("--context", help="path to the host context file (default: detect by host)")
+    if with_scope:
+        parser.add_argument("--scope", default="project", choices=("project", "user"))
+    parser.add_argument("--json", action="store_true")
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="paw",
                                 description="port-a-whip (paw) — curated cross-host agent harness")
@@ -187,7 +246,18 @@ def main(argv: list[str] | None = None) -> int:
     read.add_argument("--db", help="ICM SQLite path; omit to use configured memory")
     read.add_argument("--json", action="store_true")
 
+    plan_p = sub.add_parser("plan", help="preview wiring a CLI set into a host (no mutation)")
+    _add_linker_args(plan_p, with_scope=True)
+    apply_p = sub.add_parser("apply", help="wire a CLI set into a host (drift-guarded, backed up)")
+    _add_linker_args(apply_p, with_scope=True)
+    verify_p = sub.add_parser("verify", help="check a linked set's health")
+    _add_linker_args(verify_p, with_scope=False)
+    remove_p = sub.add_parser("remove", help="unlink a set (strip only paw-owned block)")
+    _add_linker_args(remove_p, with_scope=False)
+
     args = p.parse_args(argv)
+    if args.group in ("plan", "apply", "verify", "remove"):
+        return _linker(args)
     if args.group == "sets":
         if args.action == "list":
             return _sets_list()
