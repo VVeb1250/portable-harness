@@ -1,0 +1,118 @@
+{
+  "schema": "paw-swe-probe-freeze/v1",
+  "status": "frozen",
+  "frozen_at": "2026-06-25",
+  "source_revision": "765c930",
+  "cohort": {
+    "repository": "sympy/sympy",
+    "n": 8,
+    "instance_ids": [
+      "sympy__sympy-11400",
+      "sympy__sympy-11870",
+      "sympy__sympy-11897",
+      "sympy__sympy-13031",
+      "sympy__sympy-13437",
+      "sympy__sympy-13647",
+      "sympy__sympy-13895",
+      "sympy__sympy-13915"
+    ],
+    "excluded": [
+      {
+        "instance_id": "sympy__sympy-13177",
+        "reason": "gold validation failed; scores are not trusted"
+      }
+    ],
+    "gold_validation": {
+      "sympy__sympy-11400": "pass",
+      "sympy__sympy-11870": "pass",
+      "sympy__sympy-11897": "pass",
+      "sympy__sympy-13031": "pass",
+      "sympy__sympy-13437": "pass",
+      "sympy__sympy-13647": "pass",
+      "sympy__sympy-13895": "pass",
+      "sympy__sympy-13915": "pass",
+      "sympy__sympy-13177": "fail"
+    }
+  },
+  "result": {
+    "team3": "5/8",
+    "codex-solo": "4/8",
+    "claude-solo": "2/6",
+    "deepseek-solo": "2/8",
+    "decider": {
+      "instance_id": "sympy__sympy-11400",
+      "team3": {
+        "resolved": true,
+        "api_usd": 0.96831
+      },
+      "codex-solo": {
+        "resolved": false,
+        "api_usd": 1.01430
+      },
+      "claude-solo": {
+        "resolved": false
+      }
+    }
+  },
+  "arms": {
+    "team3": "Codex planner -> DeepSeek implementer -> Codex reviewer, max 3 iterations",
+    "codex-solo": "Codex non-interactive agent, single run",
+    "claude-solo": "manual blind single-shot authoring on 6 of 8 instances",
+    "deepseek-solo": "DeepSeek single-shot implementation"
+  },
+  "pricing_snapshot": {
+    "verified_at": "2026-06-24",
+    "basis": "API-equivalent opportunity cost; subscription marginal cost is not used",
+    "claude_opus_4_8_per_million": {
+      "input_usd": 5.0,
+      "output_usd": 25.0
+    },
+    "gpt_5_codex_per_million": {
+      "input_usd": 1.25,
+      "output_usd": 10.0
+    },
+    "deepseek_v4_flash_per_million": {
+      "input_usd": 0.14,
+      "output_usd": 0.28
+    }
+  },
+  "runtime_snapshot": {
+    "host_os": "Windows",
+    "python": "3.14.4",
+    "codex_cli": "0.141.0",
+    "icm": "0.10.57",
+    "wsl_distribution": "unavailable at freeze verification",
+    "docker": "not re-verified at freeze; historical scorer used Docker Desktop through WSL",
+    "swebench": "not re-verified at freeze; historical scorer used the WSL setup in wsl_setup.sh"
+  },
+  "sha256": {
+    "report": "1d6de2cff4508b81ea70543c17e66b6055b20456f095817aa8fa2574c922290c",
+    "instances_aggregate": "cba4417beae9f7117fae0df56b00a194f7c40903b466b7bf96c6405af01fe017",
+    "results_aggregate": "388ed1cc7a26370f4d39a548d37de91e4ead5d0dc1248cf7e7b459f3f61c4c16",
+    "canonical_predictions_aggregate": "525aa28300723e45dbab6fdb2cd4ffdaf9027301d34ba50fa56eacf22b309be1",
+    "runner": {
+      "README.md": "22e24f9ce4a507757d33776413a6e3c09169b81bd5df1a868dc0e8b86a163c17",
+      "run.py": "b6affe8c8129f0609885c3ce032a72220fb32d6e89f250d74f63f0149765eff5",
+      "config.py": "901b922510f51ec1c8d2a154b23838cb4b9b69e3c871878a67fdc44ab2407a64",
+      "codex.py": "cd616059d8f2cd222a5fdf4018d1f7e191502d29955b5633cec55bd767d2e82e",
+      "deepseek.py": "39b265e53d42fe864eb3b4dbb8cb3e72f098b770ab8f6ad0e37d7fdd99d94d79",
+      "tokens.py": "f96faba17939f211e9330d5ca21b9cf9acfc3423812a4d0e914ee6fa8641c83b"
+    },
+    "blind_inputs": {
+      "sympy__sympy-13031": "9c1744566a74bb41096a27f0f522ecf1ff564b7a677cd56f26b477b0fa5b0936",
+      "sympy__sympy-13437": "56ec2033ebdb0d60bf0630fdddef3178ad6652487e11b65529d4f1c10164f881",
+      "sympy__sympy-13647": "5e27ba40c08e2445b826a59357610899e422f371e9bf31b81c96ff74a9560d92",
+      "sympy__sympy-13895": "7b49d6496314e54d4d3ec26b2f992f6a76bd213f9b1953358667252c28ebd3c4",
+      "sympy__sympy-13915": "5a1a274380eea445d0f63d912a8e69b883a86dafca7ac921123b3d4e06a6ff4a"
+    }
+  },
+  "limitations": [
+    "N=8 and one repository; direction is evidence, not a universal benchmark.",
+    "Claude solo ran on 6 of 8 instances, so its denominator differs.",
+    "Claude token cost is a floor because hidden thinking tokens are absent.",
+    "Codex input cost is an upper bound because cached-input discounts are not applied.",
+    "The exact blind input transcript for sympy__sympy-11400 was not preserved.",
+    "WSL, Docker, and swebench versions could not be re-verified when this freeze manifest was created."
+  ],
+  "continuation_policy": "Do not append new runs to this cohort. Create a new dated cohort and manifest for further repositories or model versions."
+}

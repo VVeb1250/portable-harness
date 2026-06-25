@@ -26,18 +26,16 @@ champion arm is `team3` (Codex plans+reviews · DeepSeek implements); see Result
 - **gold-validate gate** — score the gold patch first; if it doesn't resolve, the
   env/scorer is wrong → don't trust arm scores.
 
-### Patch generation (robust-apply, since flask-5063 round)
+### Patch generation (robust-apply)
 
-DeepSeek (and claude-solo) return the **whole updated content** of each changed
-file inside `@@@FILE <path>` / `@@@ENDFILE` markers; `run.py` computes the unified
-diff locally against the bundle's base content (`_files_to_patch`). This kills the
-apply-fail confound — small models routinely emit diffs with wrong `@@` line
-numbers that `git apply` rejects, so we'd be scoring diff-arithmetic, not logic.
-Every arm uses the same machinery → all patches apply cleanly.
+DeepSeek emits Aider-style **SEARCH/REPLACE blocks** for changed regions.
+`run.py` applies them to the oracle base and computes the unified diff locally.
+This avoids both whole-file output growth and the apply-fail confound from model
+generated `@@` line numbers. Unmatched SEARCH blocks are recorded as
+`edit_misses`.
 
-- `max_tokens = 16000` (cli.py-sized files exceed the old 8000 cap → truncation → empty parse).
-- **Backlog:** whole-file still doesn't scale to very large files → switch to
-  search/replace blocks (Aider-style, emit only the changed region).
+- flask-5063 proof: 2,457 output tokens vs 10,626 with whole-file output
+  (**-77%**), zero misses, resolved held.
 - **`codex-solo` / `team3` return a real `git diff`** (codex edits staged oracle
   files in a temp git repo), so they skip the whole-file step — usage + agent turns
   come from the `codex exec` event stream (`codex.py`).
@@ -114,6 +112,11 @@ py -m bench.swe_probe.run report
   is pointless there — team-value shows up on the *hard* instances it fails.
 
 ## Results (N=8 sympy, 2026-06-25 — thesis holds)
+
+> **Frozen cohort.** Canonical metadata, hashes, exclusions, runtime snapshot,
+> and continuation policy are in
+> [`FROZEN_N8_2026-06-25.json`](FROZEN_N8_2026-06-25.json). Do not append new
+> runs to these eight instances; create a new dated cohort.
 
 ![resolution vs cost](results_chart.svg)
 

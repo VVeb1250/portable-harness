@@ -3,5 +3,8 @@
 __pycache__/
 *.pyc
 eval_out/
+*.log
+_phase*.result
+_claude_*.diff
 # agentic-loop per-attempt predictions (canonical __<arm>.diff/.jsonl are kept)
 preds/*__a[0-9]*.jsonl
