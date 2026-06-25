@@ -568,5 +568,62 @@ class SemanticRouterIntegrationTests(unittest.TestCase):
             self.assertIsNone(default_semantic_scorer())
 
 
+class EmbeddingCacheTests(unittest.TestCase):
+    """The doc-embedding cache must persist, warm-start, and embed only deltas."""
+
+    def _counting_scorer(self, cache_path: Path):
+        import numpy as np
+
+        from paw.semantic_router import OnnxSemanticScorer
+
+        class _Counting(OnnxSemanticScorer):
+            embeds = 0
+
+            def _encode(self, texts):
+                _Counting.embeds += len(texts)
+                rows = []
+                for text in texts:
+                    seed = abs(hash(text)) % 9973
+                    vector = np.array(
+                        [seed % 7 + 1, seed % 5 + 1, seed % 3 + 1],
+                        dtype=np.float32,
+                    )
+                    rows.append(vector / np.linalg.norm(vector))
+                return np.stack(rows)
+
+        return _Counting(Path("absent-model"), cache_path=cache_path)
+
+    def test_cache_warm_starts_and_embeds_only_new_documents(self) -> None:
+        skills = tuple(
+            _skill(f"s{i}", f"desc {i}", routing_text=f"routing {i}")
+            for i in range(6)
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "vecs.npz"
+
+            cold = self._counting_scorer(cache)
+            type(cold).embeds = 0
+            cold("task one", skills)
+            self.assertEqual(type(cold).embeds, len(skills) + 1)  # docs + query
+
+            warm = self._counting_scorer(cache)
+            type(warm).embeds = 0
+            first = warm("task two", skills)
+            self.assertEqual(type(warm).embeds, 1)  # query only; docs from disk
+
+            grown = skills + (_skill("s6", "new", routing_text="brand new"),)
+            delta = self._counting_scorer(cache)
+            type(delta).embeds = 0
+            delta("task three", grown)
+            self.assertEqual(type(delta).embeds, 2)  # one new doc + query
+
+            self.assertTrue(cache.is_file())
+            # cached scores equal a fresh, cacheless computation
+            fresh = self._counting_scorer(Path(tmp) / "other.npz")
+            fresh_scores = fresh("task two", skills)
+            for name in fresh_scores:
+                self.assertAlmostEqual(first[name], fresh_scores[name], places=6)
+
+
 if __name__ == "__main__":
     unittest.main()
