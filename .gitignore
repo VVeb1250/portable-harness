@@ -26,5 +26,8 @@ venv/
 bench/out/
 bench/.venv-*/
 
+# testmon (test-affected set) local selection cache
+.testmondata
+
 # fetched-per-host tool binaries — CI/install UX downloads from upstream releases
 bin/
