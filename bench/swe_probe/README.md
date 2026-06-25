@@ -100,20 +100,43 @@ py -m bench.swe_probe.run report
   DeepSeek $ is negligible.
 - `deepseek-solo` is the trap: if it already resolves cheap tasks, the team overhead is pointless.
 
-## Results so far (N=2, quality axis only)
+## Results (N=8 sympy, 2026-06-25 — thesis holds)
 
-| instance | claude-solo | team | deepseek-solo |
+![resolution vs cost](results_chart.svg)
+
+The arm set evolved: the thin `team` handoff → **`team3`** (real 3-role: Codex
+plans → DeepSeek implements → Codex reviews → revise loop over a blackboard), plus
+**`codex-solo`** (a strong ChatGPT-sub seat). Cost is now a real money axis (`api_usd`)
+— every member priced at API list rate, one currency, so the scarce premium Claude
+seat is counted at opportunity cost, not a fake $0.
+
+Resolution on the 6 sympy instances where **all four arms** ran (claude-solo subset):
+
+| arm | resolved | avg api_usd/inst | premium seat? |
 |---|---|---|---|
-| pallets__flask-4992 (easy) | ✓ | ✓ | ✗ |
-| pallets__flask-5063 (harder) | ✓ | ✓ | ✗ |
+| **team3** | **5/6 (83%)** | $0.91 | **no** |
+| codex-solo | 4/6 (67%) | $0.87 | no |
+| claude-solo | 2/6 (33%) | ~$0.08 (floor) | **yes** |
+| deepseek-solo | 2/6 (33%) | $0.002 | no |
 
-Team-value = the **plan carries spec the cheap model can't infer** (deepseek-solo failed
-on interface/format guessing, not logic). Holds on easy and harder instances.
+(Over the full 8 sympy: team3 5/8 > codex-solo 4/8 > deepseek-solo 2/8; claude-solo
+authored on 6.)
 
-⚠️ **Cost axis not yet measured** — oracle mode makes claude-solo and team read the same
-files, so the quota delta is marginal. The real existential answer needs **agentic mode**
-(claude-solo loops vs team plan-once → DeepSeek loops). `claude_tok` is still 0 (unrecorded,
-not faked). N=2 is small and flask is public (contaminated) → read the *delta*, not absolutes.
+**The decider — `sympy-11400`:** both strong solos fail single-shot (each emits
+`_print_sinc` but misses `_print_Relational`, so the `Ne(x,0)` condition prints
+instead of `x != 0` → `test_ccode_Relational` + `test_ccode_sinc` fail). `team3`
+resolves it because the Codex review/revise loop (3 iters) catches the gap and adds
+`_print_Relational` — and does so **cheaper** ($0.968 < codex-solo $1.014). This is
+the heterogeneous-team thesis in one instance: *iteration-on-review beats a stronger
+single-shot solo, off the premium seat.*
+
+**Takeaway:** team3 (Codex brain + DeepSeek hands) ≥ best solo on resolution, cost
+≈/better on hard instances, and burns **zero** premium Claude quota. claude-solo is
+dominated — same resolution as the cheapest arm while consuming the scarce seat.
+
+⚠️ **Caveats:** N=8, one repo, single-shot, oracle retrieval. `claude-solo` api_usd
+is a tiktoken **floor** (misses hidden thinking tokens); codex input is not
+cache-discounted (upper bound). Direction is robust; magnitude is soft.
 
 ## Phases
 

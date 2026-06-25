@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 470" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" role="img" aria-label="Resolution rate versus API-equivalent cost per instance, six sympy instances. team3 83% at $0.91, codex-solo 67% at $0.87, claude-solo 33% at $0.08 premium seat, deepseek-solo 33% at $0.002.">
+  <rect x="0" y="0" width="720" height="470" rx="10" fill="#ffffff" stroke="#d9d9d4" stroke-width="1"/>
+  <text x="24" y="30" font-size="15" font-weight="500" fill="#1a1a1a">team vs solo — resolution rate vs cost (6 sympy instances, all 4 arms)</text>
+
+  <line x1="70" y1="30" x2="70" y2="360" stroke="#c9c9c4" stroke-width="1"/>
+  <line x1="70" y1="360" x2="690" y2="360" stroke="#c9c9c4" stroke-width="1"/>
+
+  <g font-size="11" fill="#6a6a66">
+    <line x1="70" y1="30"  x2="690" y2="30"  stroke="#eeeeea"/><text x="64" y="34" text-anchor="end">100%</text>
+    <line x1="70" y1="112" x2="690" y2="112" stroke="#eeeeea"/><text x="64" y="116" text-anchor="end">75%</text>
+    <line x1="70" y1="195" x2="690" y2="195" stroke="#eeeeea"/><text x="64" y="199" text-anchor="end">50%</text>
+    <line x1="70" y1="277" x2="690" y2="277" stroke="#eeeeea"/><text x="64" y="281" text-anchor="end">25%</text>
+    <text x="64" y="364" text-anchor="end">0%</text>
+  </g>
+  <text x="20" y="200" font-size="12" fill="#6a6a66" transform="rotate(-90 20 200)" text-anchor="middle">resolution rate</text>
+
+  <g font-size="11" fill="#6a6a66" text-anchor="middle">
+    <line x1="70"  y1="360" x2="70"  y2="364" stroke="#c9c9c4"/><text x="70"  y="378">$0.001</text>
+    <line x1="252" y1="360" x2="252" y2="364" stroke="#c9c9c4"/><text x="252" y="378">$0.01</text>
+    <line x1="435" y1="360" x2="435" y2="364" stroke="#c9c9c4"/><text x="435" y="378">$0.10</text>
+    <line x1="617" y1="360" x2="617" y2="364" stroke="#c9c9c4"/><text x="617" y="378">$1.00</text>
+  </g>
+  <text x="380" y="398" font-size="12" fill="#6a6a66" text-anchor="middle">API-equivalent $ / instance (log scale)</text>
+
+  <text x="86" y="50" font-size="11" fill="#9a9a96">&#8592; better (cheaper &#183; higher resolution = up-left)</text>
+
+  <rect x="105" y="244" width="14" height="14" fill="#888780"/>
+  <text x="112" y="232" font-size="12" font-weight="500" fill="#5f5e5a" text-anchor="middle">deepseek-solo</text>
+  <text x="112" y="276" font-size="10" fill="#888780" text-anchor="middle">33% &#183; $0.002</text>
+
+  <path d="M418 243 l9 16 h-18 z" fill="#BA7517"/>
+  <text x="418" y="232" font-size="12" font-weight="500" fill="#854F0B" text-anchor="middle">claude-solo  &#9888; premium seat</text>
+  <text x="418" y="276" font-size="10" fill="#BA7517" text-anchor="middle">33% &#183; ~$0.08 (floor)</text>
+
+  <circle cx="606" cy="139" r="8" fill="#378ADD"/>
+  <text x="606" y="125" font-size="12" font-weight="500" fill="#185FA5" text-anchor="middle">codex-solo</text>
+  <text x="606" y="158" font-size="10" fill="#378ADD" text-anchor="middle">67% &#183; $0.87</text>
+
+  <circle cx="610" cy="86" r="9" fill="#1D9E75"/>
+  <text x="610" y="72" font-size="13" font-weight="500" fill="#0F6E56" text-anchor="middle">team3  &#9733;</text>
+  <text x="610" y="105" font-size="10" fill="#0F6E56" text-anchor="middle">83% &#183; $0.91 &#183; no premium seat</text>
+
+  <text x="24" y="432" font-size="12" fill="#1a1a1a" font-weight="500">team3 (Codex plan+review &#183; DeepSeek impl) &#8212; top resolution, cost &#8776; codex-solo, zero premium-Claude-seat burn.</text>
+  <text x="24" y="452" font-size="11" fill="#6a6a66">claude-solo $ is a tiktoken floor (no thinking tokens) and is the scarce premium seat. N=6 common subset &#183; single-shot &#183; oracle retrieval.</text>
+</svg>
