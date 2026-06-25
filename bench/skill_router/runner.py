@@ -43,6 +43,7 @@ class BenchCase:
     language: str
     query: str
     required_skills: tuple[str, ...]
+    accepted_groups: tuple[tuple[str, ...], ...]
     kind: str
 
 
@@ -66,14 +67,27 @@ def expand_cohort(source: dict[str, object]) -> tuple[BenchCase, ...]:
         kind = str(raw.get("kind", "")).strip()
         queries = raw.get("queries")
         required = raw.get("required_skills", [])
+        alternatives = raw.get("alternatives", {})
         if (
             not intent_id
             or kind not in {"positive", "silence"}
             or not isinstance(queries, dict)
             or not isinstance(required, list)
+            or not isinstance(alternatives, dict)
         ):
             raise ValueError(f"invalid intent: {intent_id or '<missing>'}")
         required_skills = tuple(str(item) for item in required)
+        accepted_groups = tuple(
+            (
+                skill,
+                *(
+                    str(item)
+                    for item in alternatives.get(skill, [])
+                    if isinstance(item, str)
+                ),
+            )
+            for skill in required_skills
+        )
         if kind == "silence" and required_skills:
             raise ValueError(f"silence intent {intent_id} cannot require skills")
         for language in languages:
@@ -88,6 +102,7 @@ def expand_cohort(source: dict[str, object]) -> tuple[BenchCase, ...]:
                     language=language,
                     query=query.strip(),
                     required_skills=required_skills,
+                    accepted_groups=accepted_groups,
                     kind=kind,
                 )
             )
@@ -108,22 +123,31 @@ def evaluate_predictions(
 ) -> dict[str, object]:
     positive = [row for row in predictions if row["required"]]
     silence = [row for row in predictions if not row["required"]]
-    required_total = sum(len(row["required"]) for row in positive)
+    required_total = sum(len(_accepted_groups(row)) for row in positive)
     hits = 0
+    relevant_predictions = 0
     predicted_positive = 0
     full = 0
     reciprocal: list[float] = []
     for row in positive:
-        required = set(row["required"])
+        accepted = _accepted_groups(row)
         predicted = list(row["predicted"])
-        overlap = required & set(predicted)
-        hits += len(overlap)
+        matched = [
+            group for group in accepted if set(group) & set(predicted)
+        ]
+        hits += len(matched)
+        acceptable = {skill for group in accepted for skill in group}
+        relevant_predictions += len(acceptable & set(predicted))
         predicted_positive += len(predicted)
-        full += int(required.issubset(predicted))
+        full += int(len(matched) == len(accepted))
         ranks = [
-            predicted.index(skill) + 1
-            for skill in required
-            if skill in predicted
+            min(
+                predicted.index(skill) + 1
+                for skill in group
+                if skill in predicted
+            )
+            for group in accepted
+            if set(group) & set(predicted)
         ]
         reciprocal.append(1.0 / min(ranks) if ranks else 0.0)
     silence_hits = sum(not row["predicted"] for row in silence)
@@ -133,9 +157,12 @@ def evaluate_predictions(
     for language in sorted({str(row["language"]) for row in predictions}):
         rows = [row for row in predictions if row["language"] == language]
         lang_positive = [row for row in rows if row["required"]]
-        lang_required = sum(len(row["required"]) for row in lang_positive)
+        lang_required = sum(len(_accepted_groups(row)) for row in lang_positive)
         lang_hits = sum(
-            len(set(row["required"]) & set(row["predicted"]))
+            sum(
+                bool(set(group) & set(row["predicted"]))
+                for group in _accepted_groups(row)
+            )
             for row in lang_positive
         )
         lang_silence = [row for row in rows if not row["required"]]
@@ -144,7 +171,10 @@ def evaluate_predictions(
             "recall_at_k": _ratio(lang_hits, lang_required),
             "full_coverage": _ratio(
                 sum(
-                    set(row["required"]).issubset(row["predicted"])
+                    all(
+                        set(group) & set(row["predicted"])
+                        for group in _accepted_groups(row)
+                    )
                     for row in lang_positive
                 ),
                 len(lang_positive),
@@ -162,7 +192,7 @@ def evaluate_predictions(
         "positive_cases": len(positive),
         "silence_cases": len(silence),
         "recall_at_k": _ratio(hits, required_total),
-        "precision_at_k": _ratio(hits, predicted_positive),
+        "precision_at_k": _ratio(relevant_predictions, predicted_positive),
         "full_coverage": _ratio(full, len(positive)),
         "mrr": _mean(reciprocal),
         "silence_accuracy": _ratio(silence_hits, len(silence)),
@@ -249,6 +279,7 @@ def run_benchmark(
             "intent": case.intent,
             "language": case.language,
             "required": required,
+            "accepted": [list(group) for group in case.accepted_groups],
         }
 
         predictions["load_all"].append(
@@ -415,6 +446,19 @@ def _prediction(
         ),
         "latency_ms": round(latency_ms, 3),
     }
+
+
+def _accepted_groups(row: dict[str, object]) -> tuple[tuple[str, ...], ...]:
+    raw = row.get("accepted")
+    if isinstance(raw, list):
+        groups = tuple(
+            tuple(str(item) for item in group)
+            for group in raw
+            if isinstance(group, list) and group
+        )
+        if groups:
+            return groups
+    return tuple((str(skill),) for skill in row["required"])
 
 
 def _fixed_scorer(scores: dict[str, float]):

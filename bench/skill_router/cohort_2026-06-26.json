@@ -27,6 +27,7 @@
       "id": "secure-auth-tests",
       "kind": "positive",
       "required_skills": ["security-review", "tdd-workflow"],
+      "alternatives": {"tdd-workflow": ["tdd"]},
       "queries": {
         "en": "Implement authentication safely with tests first, regression coverage, and a security review.",
         "th": "ทำระบบยืนยันตัวตนอย่างปลอดภัยโดยเขียนเทสต์ก่อน มี regression coverage และรีวิวความปลอดภัย",
@@ -46,6 +47,7 @@
       "id": "test-driven-feature",
       "kind": "positive",
       "required_skills": ["tdd-workflow"],
+      "alternatives": {"tdd-workflow": ["tdd"]},
       "queries": {
         "en": "Add this parser feature using a strict red-green-refactor test-driven workflow.",
         "th": "เพิ่มฟีเจอร์ parser นี้ด้วยขั้นตอน test-driven แบบ red-green-refactor อย่างเคร่งครัด",
@@ -65,6 +67,7 @@
       "id": "deep-current-research",
       "kind": "positive",
       "required_skills": ["deep-research"],
+      "alternatives": {"deep-research": ["research-ops"]},
       "queries": {
         "en": "Research the current state of multilingual tool retrieval using multiple primary sources and citations.",
         "th": "รีเสิร์ชสถานะปัจจุบันของ multilingual tool retrieval จากแหล่งข้อมูลปฐมภูมิหลายแหล่งพร้อมการอ้างอิง",
