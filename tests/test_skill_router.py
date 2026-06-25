@@ -7,7 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Sequence
+from unittest.mock import patch
 
+from paw.semantic_router import default_semantic_scorer
 from paw.skill_graph import SkillGraph, load_skill_graph
 from paw.skill_router import (
     SkillRecord,
@@ -534,6 +536,36 @@ class SkillDiscoveryTests(unittest.TestCase):
             tuple(item.skill.name for item in expanded),
             ("agent-harness-construction",),
         )
+
+
+class SemanticRouterIntegrationTests(unittest.TestCase):
+    def test_local_multilingual_model_ranks_related_skill_above_distractor(
+        self,
+    ) -> None:
+        scorer = default_semantic_scorer()
+        if scorer is None:
+            self.skipTest("local multilingual ONNX model is unavailable")
+        skills = (
+            _skill(
+                "agent-routing",
+                "Design agent routing, action spaces, and skill selection.",
+            ),
+            _skill(
+                "cooking",
+                "Prepare recipes, ingredients, and meals in a kitchen.",
+            ),
+        )
+
+        scores = scorer(
+            "エージェントのスキルを選択するルーターを設計する",
+            skills,
+        )
+
+        self.assertGreater(scores["agent-routing"], scores["cooking"])
+
+    def test_missing_optional_dependencies_degrade_to_no_scorer(self) -> None:
+        with patch("paw.semantic_router.importlib.util.find_spec", return_value=None):
+            self.assertIsNone(default_semantic_scorer())
 
 
 if __name__ == "__main__":

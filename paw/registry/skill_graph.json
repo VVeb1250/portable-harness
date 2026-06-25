@@ -1,0 +1,62 @@
+{
+  "schema": "paw-skill-graph/v1",
+  "nodes": [
+    {
+      "id": "intent:agent-routing",
+      "kind": "intent",
+      "text": "Design or improve an AI agent harness, skill router, tool routing, action space, observation format, task-state routing, progressive skill loading, or context-efficient PUSH and PULL capability discovery."
+    },
+    {
+      "id": "intent:skill-authoring",
+      "kind": "intent",
+      "text": "Create, write, package, or update an agent skill with SKILL.md instructions, progressive disclosure, scripts, references, and reusable resources."
+    },
+    {
+      "id": "intent:security-review",
+      "kind": "intent",
+      "text": "Review authentication, authorization, secrets, permissions, user input, dependencies, or sensitive code for security risks."
+    },
+    {
+      "id": "intent:test-driven-change",
+      "kind": "intent",
+      "text": "Implement a feature, bug fix, or refactor with tests first, regression coverage, and verification."
+    }
+  ],
+  "edges": [
+    {
+      "from": "intent:agent-routing",
+      "to": "agent-harness-construction",
+      "relation": "routes_to"
+    },
+    {
+      "from": "intent:skill-authoring",
+      "to": "skill-creator",
+      "relation": "routes_to"
+    },
+    {
+      "from": "intent:skill-authoring",
+      "to": "write-a-skill",
+      "relation": "routes_to"
+    },
+    {
+      "from": "skill-creator",
+      "to": "write-a-skill",
+      "relation": "substitutes"
+    },
+    {
+      "from": "intent:security-review",
+      "to": "security-review",
+      "relation": "routes_to"
+    },
+    {
+      "from": "security-review",
+      "to": "tdd-workflow",
+      "relation": "complements"
+    },
+    {
+      "from": "intent:test-driven-change",
+      "to": "tdd-workflow",
+      "relation": "routes_to"
+    }
+  ]
+}

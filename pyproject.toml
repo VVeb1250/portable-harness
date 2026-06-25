@@ -29,3 +29,4 @@ include = ["paw/**"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "paw/registry/sets.json" = "paw/registry/sets.json"
+"paw/registry/skill_graph.json" = "paw/registry/skill_graph.json"

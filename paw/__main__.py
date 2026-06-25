@@ -21,6 +21,9 @@ from paw.blackboard import (
 )
 from paw.linker import LinkerError, apply_plan, build_plan, remove, verify
 from paw.router import RouteRequest, route
+from paw.semantic_router import default_semantic_scorer
+from paw.skill_graph import default_skill_graph_path, load_skill_graph
+from paw.skill_router import default_skill_roots, discover_skills, suggest_skill
 from paw.sets.loader import SetsError, get_set, load_all
 
 
@@ -75,6 +78,40 @@ def _route(args: argparse.Namespace) -> int:
                 for value in values:
                     print(f"  - {value}")
     return 0 if decision.status != "error" else 1
+
+
+def _suggest(args: argparse.Namespace) -> int:
+    roots = (
+        tuple(Path(root) for root in args.skills_root)
+        if args.skills_root
+        else default_skill_roots()
+    )
+    skills = discover_skills(roots)
+    graph = load_skill_graph(default_skill_graph_path(), skills)
+    result = suggest_skill(
+        args.task,
+        skills,
+        active_skills=tuple(args.active_skill),
+        max_suggestions=args.max_suggestions,
+        semantic_scorer=default_semantic_scorer(),
+        graph=graph,
+    )
+    if args.json:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    elif result.suggestions:
+        print("shadow skill suggestions:")
+        for suggestion in result.suggestions:
+            print(f"  - {suggestion.skill}: {suggestion.reason}")
+            print(f"    pull: {suggestion.skill_path}")
+    elif result.candidates:
+        print("shadow skill candidates (agent must verify):")
+        for candidate in result.candidates:
+            print(f"  - {candidate.skill}: {candidate.description}")
+            print(f"    score: {candidate.retrieval_score:.3f}")
+            print(f"    consider: {candidate.skill_path}")
+    else:
+        print(f"shadow: silent ({result.reason})")
+    return 0
 
 
 def _print_blackboard_result(result: BlackboardResult, as_json: bool) -> int:
@@ -213,6 +250,31 @@ def main(argv: list[str] | None = None) -> int:
     router.add_argument("--max-budget-usd", type=float)
     router.add_argument("--json", action="store_true")
 
+    suggest = sub.add_parser(
+        "suggest",
+        help="shadow-mode PUSH discovery with explicit PULL handoff",
+    )
+    suggest.add_argument("task")
+    suggest.add_argument(
+        "--skills-root",
+        action="append",
+        default=[],
+        help="catalog root containing */SKILL.md; may be repeated",
+    )
+    suggest.add_argument(
+        "--active-skill",
+        action="append",
+        default=[],
+        help="suppress a skill already active in the task; may be repeated",
+    )
+    suggest.add_argument(
+        "--max-suggestions",
+        type=int,
+        choices=(1, 2),
+        default=2,
+    )
+    suggest.add_argument("--json", action="store_true")
+
     blackboard = sub.add_parser(
         "blackboard",
         help="share explicit team state through an ICM-backed blackboard",
@@ -265,6 +327,8 @@ def main(argv: list[str] | None = None) -> int:
             return _sets_show(args.name)
     if args.group == "route":
         return _route(args)
+    if args.group == "suggest":
+        return _suggest(args)
     if args.group == "blackboard":
         return _blackboard(args)
     p.print_help()
