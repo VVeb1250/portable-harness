@@ -61,6 +61,13 @@ class SkillSuggestionTests(unittest.TestCase):
                 "tdd-workflow",
                 "Implement features and fixes with tests first and verify coverage.",
             ),
+            _skill(
+                "write-a-skill",
+                (
+                    "Create new agent skills with proper structure, progressive "
+                    "disclosure, and bundled resources."
+                ),
+            ),
         )
 
     def test_clear_match_pushes_skill_ids_without_skill_bodies(self) -> None:
@@ -99,6 +106,10 @@ class SkillSuggestionTests(unittest.TestCase):
         )
 
         self.assertEqual(result.suggestions[0].skill, "agent-harness-construction")
+        self.assertNotIn(
+            "write-a-skill",
+            {item.skill for item in result.suggestions},
+        )
 
     def test_weak_match_stays_silent(self) -> None:
         result = suggest_skill("ช่วยสรุปประชุมเมื่อวานให้หน่อย", self.skills)
