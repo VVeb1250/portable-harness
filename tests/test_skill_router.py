@@ -21,11 +21,17 @@ def _skill(
     description: str,
     *,
     path: str | None = None,
+    routing_text: str = "",
+    requires_evidence: tuple[str, ...] = (),
+    substitute_group: str | None = None,
 ) -> SkillRecord:
     return SkillRecord(
         name=name,
         description=description,
         path=path or f"/skills/{name}/SKILL.md",
+        routing_text=routing_text or f"{name}. {description}",
+        requires_evidence=requires_evidence,
+        substitute_group=substitute_group,
     )
 
 
@@ -82,16 +88,20 @@ class SkillSuggestionTests(unittest.TestCase):
             _skill(
                 "django-security",
                 "Django authentication, authorization, CSRF, and input security.",
+                requires_evidence=("django",),
+                substitute_group="framework-security",
             ),
             _skill(
                 "quarkus-security",
                 "Quarkus authentication, authorization, OIDC, and JWT security.",
+                requires_evidence=("quarkus",),
+                substitute_group="framework-security",
             ),
         )
 
     def test_clear_match_pushes_skill_ids_without_skill_bodies(self) -> None:
         result = suggest_skill(
-            "ทำให้ PUSH skill router ฉลาดขึ้นและประหยัด context",
+            "Make the PUSH skill router smarter and reduce context use.",
             self.skills,
         )
 
@@ -103,7 +113,7 @@ class SkillSuggestionTests(unittest.TestCase):
             ("agent-harness-construction",),
         )
         self.assertEqual(result.suggestions[0].action, "load_skill")
-        self.assertIn("agent-routing", result.suggestions[0].reason)
+        self.assertIn("relevance", result.suggestions[0].reason)
         self.assertNotIn("Design and optimize", json.dumps(result.to_dict()))
 
     def test_complementary_clear_matches_can_push_two_skills(self) -> None:
@@ -117,6 +127,27 @@ class SkillSuggestionTests(unittest.TestCase):
             {"security-review", "tdd-workflow"},
         )
         self.assertLessEqual(len(result.suggestions), 2)
+
+    def test_framework_skill_requires_catalog_evidence_not_router_hard_code(
+        self,
+    ) -> None:
+        generic = suggest_skill(
+            "Implement authentication safely.",
+            self.skills,
+        )
+        django = suggest_skill(
+            "Implement authentication safely in Django.",
+            self.skills,
+        )
+
+        self.assertNotIn(
+            "django-security",
+            {item.skill for item in generic.suggestions},
+        )
+        self.assertIn(
+            "django-security",
+            {item.skill for item in django.suggestions},
+        )
 
     def test_generic_design_word_does_not_trigger_ui_skill(self) -> None:
         result = suggest_skill(
@@ -222,6 +253,10 @@ class SkillDiscoveryTests(unittest.TestCase):
             "Route agent work using bounded task state.",
         )
         self.assertEqual(skills[0].path, str(skill_file.resolve()))
+        self.assertIn(
+            "Large body that must not be returned",
+            skills[0].routing_text,
+        )
 
     def test_cli_emits_shadow_suggestion_for_pull_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -241,7 +276,7 @@ class SkillDiscoveryTests(unittest.TestCase):
                     "-m",
                     "paw",
                     "suggest",
-                    "ออกแบบ PUSH skill router แบบประหยัด context",
+                    "Design a PUSH skill router with a small context budget.",
                     "--skills-root",
                     directory,
                     "--json",
