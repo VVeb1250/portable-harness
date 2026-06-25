@@ -1,20 +1,27 @@
-# swe_probe — team(Claude+DeepSeek) vs solo, on SWE-bench-Lite
+# swe_probe — heterogeneous team vs solo, on SWE-bench-Lite
 
 Answers the EXISTENTIAL gap (STATUS #1) and upgrades bench from proxy→objective (#2):
 
-> Does **Claude-plan + DeepSeek-implement** hold resolution-rate vs **Claude-solo**,
-> while burning far less scarce **Claude quota**?
+> Does a **heterogeneous team** (a cheap brain plans/reviews, a cheaper meter
+> implements) hold resolution-rate vs the **best single model**, while burning far
+> less scarce **premium-seat quota**?
 
-Same-vendor (Opus+Sonnet) is the case literature says solo wins. The real edge is
-**cross-vendor cost-arbitrage**: bulk implementation moves to a ~1-2 orders cheaper
-meter (DeepSeek V4-flash, $0.14/$0.28 per M) while Claude only plans/reviews.
+The edge is **cross-vendor cost-arbitrage**: bulk implementation moves to a ~1-2
+orders cheaper meter (DeepSeek V4-flash, $0.14/$0.28 per M) while a stronger model
+only plans/reviews — and **no premium Claude seat is consumed at all**. The current
+champion arm is `team3` (Codex plans+reviews · DeepSeek implements); see Results.
 
 ## Design (keeps it cheap + honest)
 
 - **Oracle retrieval** — every arm gets exactly the files the gold patch edits.
   Measures *patch generation*, not retrieval. No repo-wide exploration = low Claude quota.
-- **Single shot** — no agentic retry loop ("ไม่ต้องรันหลายรอบ").
-- **3 arms:** `claude-solo` (you), `deepseek-solo` (trap baseline), `team` (you plan → DeepSeek impl → you review).
+- **Single shot for solos** — `claude-solo`/`codex-solo`/`deepseek-solo` get one pass,
+  no agentic retry. `team3` is allowed an internal review→revise loop (that *is* the
+  teamwork being measured), gated before the expensive Docker eval.
+- **4 arms:** `claude-solo` (you, the premium seat, authored BLIND), `codex-solo`
+  (strong ChatGPT-sub seat), `deepseek-solo` (cheap trap baseline), `team3` (Codex
+  plans → DeepSeek implements → Codex reviews → revise; champion). The thin `team`
+  (plan-once → DeepSeek → pytest-retry) is retained for back-compat.
 - **Objective scoring** — official swebench harness in Docker → `resolved: true/false`.
 - **gold-validate gate** — score the gold patch first; if it doesn't resolve, the
   env/scorer is wrong → don't trust arm scores.
@@ -31,8 +38,12 @@ Every arm uses the same machinery → all patches apply cleanly.
 - `max_tokens = 16000` (cli.py-sized files exceed the old 8000 cap → truncation → empty parse).
 - **Backlog:** whole-file still doesn't scale to very large files → switch to
   search/replace blocks (Aider-style, emit only the changed region).
-- **review = light** (apply-check + sanity, do NOT rewrite what the plan
-  underspecified) — otherwise team trivially equals claude-solo and team-value is unmeasurable.
+- **`codex-solo` / `team3` return a real `git diff`** (codex edits staged oracle
+  files in a temp git repo), so they skip the whole-file step — usage + agent turns
+  come from the `codex exec` event stream (`codex.py`).
+- **review gates, doesn't ghost-write** — in `team3` the Codex reviewer emits
+  `VERDICT: PASS|REVISE` + notes; a REVISE re-implements (no eval), only a PASS goes
+  to Docker. The reviewer does not hand-write the patch, so team-value stays measurable.
 
 ## Privacy
 
@@ -63,42 +74,44 @@ first eval (~1-2 min/eval after). Subset footprint ≈ 10–20 GB; `docker syste
 
 ```powershell
 # 0. pick a hermetic instance + verify env  (requests = NON-hermetic, needs httpbin → rejected;
-#    flask = in-process test_client = hermetic. flask-4992/5063 already gold-validated.)
-py -m bench.swe_probe.run instances --repo pallets/flask      # list real ids
+#    sympy = pure-python, hermetic + hard enough to separate arms. flask Lite is too easy.)
+py -m bench.swe_probe.run instances --repo sympy/sympy        # list real ids
 py -m bench.swe_probe.run pull <id>
-py -m bench.swe_probe.run gold-validate <id>                 # MUST say PASS (hermetic check)
+py -m bench.swe_probe.run gold-validate <id>                  # MUST say PASS (env trustworthy)
 
-# 1. DeepSeek-solo (automated)
+# 1. deepseek-solo (cheap trap baseline) — automated
 py -m bench.swe_probe.run deepseek-solo <id>
 py -m bench.swe_probe.run eval <id> deepseek-solo
 
-# 2. team — Claude (you) plans into plan.md, DeepSeek implements, you review the .diff
-#    ...write bench/swe_probe/plan.md (the plan), then:
-py -m bench.swe_probe.run team-impl <id> --plan bench\swe_probe\plan.md
-#    review/repair preds\<id>__team.diff if needed, then:
-py -m bench.swe_probe.run eval <id> team
+# 2. codex-solo (strong ChatGPT-sub seat) — automated; real diff + usage/turns
+py -m bench.swe_probe.run codex-solo <id>
+py -m bench.swe_probe.run eval <id> codex-solo
 
-# 3. Claude-solo — you write the whole patch to a file, register + eval
-py -m bench.swe_probe.run claude-patch <id> claude-solo --file my.diff
-py -m bench.swe_probe.run eval <id> claude-solo
+# 3. team3 (champion: Codex plan → DeepSeek impl → Codex review → revise) — self-evals in loop
+py -m bench.swe_probe.run team3 <id> --max-iter 3
 
-# 4. record Claude quota for the Claude-touching arms (ccusage delta before/after)
-ccusage session    # snapshot input/output token delta for the arm
-py -m bench.swe_probe.run claude-usage <id> claude-solo --in <N> --out <M>
-py -m bench.swe_probe.run claude-usage <id> team        --in <N> --out <M>
+# 4. claude-solo (the premium seat) — author the patch BLIND (read only problem +
+#    oracle_files, NEVER the gold_patch), write a .diff, register + log tokens + eval
+py -m bench.swe_probe.run claude-patch  <id> claude-solo --file my.diff
+py -m bench.swe_probe.run claude-tokens <id> claude-solo --in-file read.txt --out-file my.diff
+py -m bench.swe_probe.run eval          <id> claude-solo
 
-# 5. read the scorecard
+# 5. read the scorecard (resolution + api_usd money axis across arms)
 py -m bench.swe_probe.run report
 ```
 
 ## Reading the result
 
-`win = team pass == claude-solo pass, AND team claude_tok << claude-solo claude_tok`
+`win = team3 resolves ≥ best solo, at ≈/lower api_usd, with ZERO premium-Claude-seat burn.`
 
-- team resolves what solo resolves → **quality holds at the handoff**.
-- team Claude tokens (plan+review only) ≪ solo Claude tokens (full solve) → **quota saved**;
-  DeepSeek $ is negligible.
-- `deepseek-solo` is the trap: if it already resolves cheap tasks, the team overhead is pointless.
+- `team3` resolves what the best solo resolves (or more, via the review/revise loop)
+  → **quality holds — and improves — off the premium seat**.
+- `api_usd` = every member's in+out+reasoning at API list rate, one currency. The sub
+  seats are priced at opportunity cost (not a fake $0), so "team adds DeepSeek cents"
+  is compared honestly against "solo burns the scarce seat". claude-solo's number is a
+  tiktoken **floor** (misses hidden thinking tokens).
+- `deepseek-solo` is the trap: if it already resolves a task cheap, the team overhead
+  is pointless there — team-value shows up on the *hard* instances it fails.
 
 ## Results (N=8 sympy, 2026-06-25 — thesis holds)
 
