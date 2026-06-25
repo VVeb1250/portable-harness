@@ -1,0 +1,293 @@
+{
+  "schema": "paw-skill-router-cohort/v1",
+  "created": "2026-06-26",
+  "languages": ["en", "th", "zh", "ja", "es", "ar", "hi", "tr", "fi", "sw", "ig", "am"],
+  "notes": "Synthetic diagnostic cohort. Non-English prompts are benchmark drafts and require native-speaker review before publication claims.",
+  "intents": [
+    {
+      "id": "agent-routing",
+      "kind": "positive",
+      "required_skills": ["agent-harness-construction"],
+      "queries": {
+        "en": "Design a context-efficient router that chooses the right skills for an AI coding agent.",
+        "th": "ออกแบบเราเตอร์ที่เลือกสกิลให้เอเจนต์เขียนโค้ดได้ถูกต้องโดยใช้คอนเท็กซ์ให้น้อย",
+        "zh": "设计一个节省上下文、能为 AI 编程代理选择正确技能的路由器。",
+        "ja": "AI コーディングエージェントに適切なスキルを選ばせる、コンテキスト効率のよいルーターを設計して。",
+        "es": "Diseña un enrutador eficiente en contexto que elija las habilidades correctas para un agente de programación con IA.",
+        "ar": "صمّم موجّهًا موفّرًا للسياق يختار المهارات المناسبة لوكيل برمجة بالذكاء الاصطناعي.",
+        "hi": "ऐसा संदर्भ-कुशल राउटर डिज़ाइन करें जो एआई कोडिंग एजेंट के लिए सही कौशल चुने।",
+        "tr": "Bir yapay zekâ kodlama ajanı için doğru becerileri seçen, bağlam açısından verimli bir yönlendirici tasarla.",
+        "fi": "Suunnittele kontekstia säästävä reititin, joka valitsee tekoälypohjaiselle koodausagentille oikeat taidot.",
+        "sw": "Buni kipanga njia kinachotumia muktadha kidogo na kuchagua ujuzi sahihi kwa wakala wa kuandika msimbo wa AI.",
+        "ig": "Chepụta onye na-ahọrọ ụzọ na-eji obere context ma họrọ nkà ziri ezi maka AI coding agent.",
+        "am": "ለAI ኮድ ወኪል ትክክለኛ ክህሎቶችን የሚመርጥ እና ኮንቴክስትን የሚቆጥብ ራውተር ንድፍ።"
+      }
+    },
+    {
+      "id": "secure-auth-tests",
+      "kind": "positive",
+      "required_skills": ["security-review", "tdd-workflow"],
+      "queries": {
+        "en": "Implement authentication safely with tests first, regression coverage, and a security review.",
+        "th": "ทำระบบยืนยันตัวตนอย่างปลอดภัยโดยเขียนเทสต์ก่อน มี regression coverage และรีวิวความปลอดภัย",
+        "zh": "以测试优先的方式安全实现身份验证，并加入回归覆盖和安全审查。",
+        "ja": "テストファーストで認証を安全に実装し、回帰カバレッジとセキュリティレビューも行って。",
+        "es": "Implementa la autenticación de forma segura, primero con pruebas, cobertura de regresión y revisión de seguridad.",
+        "ar": "نفّذ المصادقة بأمان مع كتابة الاختبارات أولًا وتغطية الانحدار ومراجعة أمنية.",
+        "hi": "पहले परीक्षण लिखते हुए प्रमाणीकरण को सुरक्षित रूप से लागू करें, रिग्रेशन कवरेज और सुरक्षा समीक्षा के साथ।",
+        "tr": "Kimlik doğrulamayı önce test yazarak, regresyon kapsamı ve güvenlik incelemesiyle güvenli biçimde uygula.",
+        "fi": "Toteuta tunnistautuminen turvallisesti testit ensin, regressiokattavuus ja tietoturvakatselmointi mukana.",
+        "sw": "Tekeleza uthibitishaji kwa usalama kwa kuanza na majaribio, ufunikaji wa regression na ukaguzi wa usalama.",
+        "ig": "Mee authentication n'enweghị ihe ize ndụ, buru ụzọ dee tests, tinye regression coverage na security review.",
+        "am": "ማረጋገጫን በደህንነት በመጀመሪያ ሙከራዎች፣ regression coverage እና security review ጋር ተግብር።"
+      }
+    },
+    {
+      "id": "test-driven-feature",
+      "kind": "positive",
+      "required_skills": ["tdd-workflow"],
+      "queries": {
+        "en": "Add this parser feature using a strict red-green-refactor test-driven workflow.",
+        "th": "เพิ่มฟีเจอร์ parser นี้ด้วยขั้นตอน test-driven แบบ red-green-refactor อย่างเคร่งครัด",
+        "zh": "使用严格的红-绿-重构测试驱动流程添加这个解析器功能。",
+        "ja": "厳密なレッド・グリーン・リファクタリングの TDD 手順でこのパーサー機能を追加して。",
+        "es": "Añade esta función del analizador con un flujo TDD estricto de rojo-verde-refactorización.",
+        "ar": "أضف ميزة المحلل هذه باتباع دورة تطوير مدفوعة بالاختبارات: أحمر ثم أخضر ثم إعادة هيكلة.",
+        "hi": "इस पार्सर सुविधा को कड़े रेड-ग्रीन-रिफैक्टर टेस्ट-ड्रिवन वर्कफ़्लो से जोड़ें।",
+        "tr": "Bu ayrıştırıcı özelliğini katı kırmızı-yeşil-refaktör test güdümlü akışla ekle.",
+        "fi": "Lisää tämä jäsentimen ominaisuus tiukalla red-green-refactor-testivetoisella työnkululla.",
+        "sw": "Ongeza kipengele hiki cha parser kwa mzunguko mkali wa TDD wa red-green-refactor.",
+        "ig": "Tinye parser feature a site na usoro TDD siri ike nke red-green-refactor.",
+        "am": "ይህን parser feature በጥብቅ red-green-refactor TDD ሂደት ጨምር።"
+      }
+    },
+    {
+      "id": "deep-current-research",
+      "kind": "positive",
+      "required_skills": ["deep-research"],
+      "queries": {
+        "en": "Research the current state of multilingual tool retrieval using multiple primary sources and citations.",
+        "th": "รีเสิร์ชสถานะปัจจุบันของ multilingual tool retrieval จากแหล่งข้อมูลปฐมภูมิหลายแหล่งพร้อมการอ้างอิง",
+        "zh": "使用多个一手来源并附引用，深入研究多语言工具检索的最新状态。",
+        "ja": "複数の一次資料と引用を使って、多言語ツール検索の現状を詳しく調査して。",
+        "es": "Investiga a fondo el estado actual de la recuperación multilingüe de herramientas usando varias fuentes primarias y citas.",
+        "ar": "ابحث بعمق في الوضع الحالي لاسترجاع الأدوات متعدد اللغات باستخدام عدة مصادر أولية ومراجع.",
+        "hi": "कई प्राथमिक स्रोतों और उद्धरणों के साथ बहुभाषी टूल रिट्रीवल की वर्तमान स्थिति पर गहन शोध करें।",
+        "tr": "Çok dilli araç erişiminin güncel durumunu birden çok birincil kaynak ve atıfla derinlemesine araştır.",
+        "fi": "Tutki monikielisen työkalujen haun nykytilaa perusteellisesti useista ensisijaisista lähteistä ja viittein.",
+        "sw": "Fanya utafiti wa kina kuhusu hali ya sasa ya urejeshaji wa zana kwa lugha nyingi ukitumia vyanzo kadhaa vya msingi na marejeo.",
+        "ig": "Mee nyocha miri emi banyere ọnọdụ multilingual tool retrieval ugbu a site na primary sources dị iche iche na citations.",
+        "am": "የብዙ ቋንቋ የመሣሪያ ፍለጋ ወቅታዊ ሁኔታን ከብዙ ዋና ምንጮች እና ጥቅሶች ጋር በጥልቀት መርምር።"
+      }
+    },
+    {
+      "id": "market-competitor-research",
+      "kind": "positive",
+      "required_skills": ["market-research"],
+      "queries": {
+        "en": "Analyze the market, competitors, pricing, and customer segments for an AI logistics startup.",
+        "th": "วิเคราะห์ตลาด คู่แข่ง ราคา และกลุ่มลูกค้าของสตาร์ทอัพโลจิสติกส์ AI",
+        "zh": "分析一家 AI 物流初创公司的市场、竞争对手、定价和客户细分。",
+        "ja": "AI 物流スタートアップの市場、競合、価格設定、顧客セグメントを分析して。",
+        "es": "Analiza el mercado, los competidores, los precios y los segmentos de clientes de una startup logística de IA.",
+        "ar": "حلّل السوق والمنافسين والتسعير وشرائح العملاء لشركة ناشئة في لوجستيات الذكاء الاصطناعي.",
+        "hi": "एआई लॉजिस्टिक्स स्टार्टअप के बाज़ार, प्रतिस्पर्धियों, मूल्य निर्धारण और ग्राहक खंडों का विश्लेषण करें।",
+        "tr": "Bir yapay zekâ lojistik girişiminin pazarını, rakiplerini, fiyatlandırmasını ve müşteri segmentlerini analiz et.",
+        "fi": "Analysoi tekoälylogistiikan startupin markkina, kilpailijat, hinnoittelu ja asiakassegmentit.",
+        "sw": "Changanua soko, washindani, bei na makundi ya wateja ya kampuni changa ya lojistiki ya AI.",
+        "ig": "Nyochaa ahịa, ndị asọmpi, ọnụahịa na customer segments nke AI logistics startup.",
+        "am": "የAI ሎጂስቲክስ ስታርትአፕ ገበያ፣ ተወዳዳሪዎች፣ ዋጋ እና የደንበኛ ክፍሎችን ተንትን።"
+      }
+    },
+    {
+      "id": "long-form-article",
+      "kind": "positive",
+      "required_skills": ["article-writing"],
+      "queries": {
+        "en": "Turn these notes into a polished long-form technical article with a clear narrative.",
+        "th": "เปลี่ยนโน้ตเหล่านี้เป็นบทความเทคนิคขนาดยาวที่ขัดเกลาแล้วและมีโครงเรื่องชัดเจน",
+        "zh": "把这些笔记整理成一篇叙事清晰、打磨完善的长篇技术文章。",
+        "ja": "このメモを、明確な流れを持つ洗練された長編技術記事にまとめて。",
+        "es": "Convierte estas notas en un artículo técnico largo, pulido y con una narrativa clara.",
+        "ar": "حوّل هذه الملاحظات إلى مقال تقني طويل ومصقول بسرد واضح.",
+        "hi": "इन नोट्स को स्पष्ट कथा वाले परिष्कृत दीर्घ तकनीकी लेख में बदलें।",
+        "tr": "Bu notları açık bir anlatıya sahip, özenli ve uzun bir teknik makaleye dönüştür.",
+        "fi": "Muuta nämä muistiinpanot viimeistellyksi pitkäksi tekniseksi artikkeliksi, jossa on selkeä kerronta.",
+        "sw": "Geuza madokezo haya kuwa makala ndefu ya kiufundi, iliyokamilishwa na yenye mtiririko wazi.",
+        "ig": "Gbanwee notes ndị a ka ha bụrụ ogologo technical article a haziri nke ọma ma nwee narrative doro anya.",
+        "am": "እነዚህን ማስታወሻዎች ግልጽ ትረካ ያለው የተጠናቀቀ ረጅም ቴክኒካዊ ጽሑፍ አድርግ።"
+      }
+    },
+    {
+      "id": "browser-e2e-tests",
+      "kind": "positive",
+      "required_skills": ["e2e-testing"],
+      "queries": {
+        "en": "Create robust Playwright end-to-end tests for login, checkout, screenshots, and CI artifacts.",
+        "th": "สร้างเทสต์ end-to-end ด้วย Playwright สำหรับล็อกอิน เช็กเอาต์ ภาพหน้าจอ และ artifacts ใน CI",
+        "zh": "为登录、结账、截图和 CI 构件创建可靠的 Playwright 端到端测试。",
+        "ja": "ログイン、チェックアウト、スクリーンショット、CI 成果物を対象に堅牢な Playwright E2E テストを作成して。",
+        "es": "Crea pruebas end-to-end robustas con Playwright para inicio de sesión, pago, capturas y artefactos de CI.",
+        "ar": "أنشئ اختبارات شاملة قوية باستخدام Playwright لتسجيل الدخول والدفع ولقطات الشاشة ومخرجات CI.",
+        "hi": "लॉगिन, चेकआउट, स्क्रीनशॉट और CI आर्टिफैक्ट के लिए मज़बूत Playwright एंड-टू-एंड परीक्षण बनाएँ।",
+        "tr": "Giriş, ödeme, ekran görüntüleri ve CI çıktıları için sağlam Playwright uçtan uca testleri oluştur.",
+        "fi": "Luo kestävät Playwright-päästä-päähän-testit kirjautumiselle, kassalle, kuvakaappauksille ja CI-artefakteille.",
+        "sw": "Tengeneza majaribio thabiti ya Playwright ya mwisho hadi mwisho kwa kuingia, malipo, picha za skrini na artefakti za CI.",
+        "ig": "Mepụta Playwright end-to-end tests siri ike maka login, checkout, screenshots na CI artifacts.",
+        "am": "ለlogin፣ checkout፣ screenshots እና CI artifacts ጠንካራ Playwright end-to-end tests ፍጠር።"
+      }
+    },
+    {
+      "id": "database-migration",
+      "kind": "positive",
+      "required_skills": ["database-migrations"],
+      "queries": {
+        "en": "Plan a zero-downtime database schema migration with backfill, rollback, and compatibility checks.",
+        "th": "วางแผน migration schema ฐานข้อมูลแบบไม่หยุดระบบ พร้อม backfill rollback และตรวจ compatibility",
+        "zh": "规划一个零停机的数据库模式迁移，包括回填、回滚和兼容性检查。",
+        "ja": "バックフィル、ロールバック、互換性確認を含む無停止のデータベーススキーマ移行を計画して。",
+        "es": "Planifica una migración de esquema de base de datos sin tiempo de inactividad, con backfill, rollback y controles de compatibilidad.",
+        "ar": "خطّط لترحيل مخطط قاعدة البيانات دون توقف مع تعبئة رجعية وتراجع وفحوص توافق.",
+        "hi": "बैकफिल, रोलबैक और संगतता जाँच के साथ शून्य-डाउनटाइम डेटाबेस स्कीमा माइग्रेशन की योजना बनाएँ।",
+        "tr": "Backfill, geri alma ve uyumluluk kontrolleriyle sıfır kesintili veritabanı şema geçişi planla.",
+        "fi": "Suunnittele nollakatkoinen tietokantaskeeman migraatio, johon kuuluvat backfill, rollback ja yhteensopivuustarkistukset.",
+        "sw": "Panga uhamishaji wa schema ya hifadhidata bila kusimamisha huduma, ukiwa na backfill, rollback na ukaguzi wa uoanifu.",
+        "ig": "Hazie database schema migration na-enweghị downtime, tinyere backfill, rollback na compatibility checks.",
+        "am": "backfill፣ rollback እና compatibility checks ያሉበት zero-downtime database schema migration እቅድ አውጣ።"
+      }
+    },
+    {
+      "id": "docker-compose",
+      "kind": "positive",
+      "required_skills": ["docker-patterns"],
+      "queries": {
+        "en": "Containerize this service with Docker Compose, secure images, health checks, networks, and volumes.",
+        "th": "ทำ service นี้เป็น container ด้วย Docker Compose พร้อม image ที่ปลอดภัย health checks networks และ volumes",
+        "zh": "使用 Docker Compose 容器化该服务，并配置安全镜像、健康检查、网络和卷。",
+        "ja": "このサービスを Docker Compose でコンテナ化し、安全なイメージ、ヘルスチェック、ネットワーク、ボリュームを設定して。",
+        "es": "Conteneriza este servicio con Docker Compose, imágenes seguras, controles de salud, redes y volúmenes.",
+        "ar": "حوّل هذه الخدمة إلى حاويات باستخدام Docker Compose مع صور آمنة وفحوص صحة وشبكات ووحدات تخزين.",
+        "hi": "इस सेवा को Docker Compose, सुरक्षित इमेज, हेल्थ चेक, नेटवर्क और वॉल्यूम के साथ कंटेनराइज़ करें।",
+        "tr": "Bu servisi Docker Compose, güvenli imajlar, sağlık kontrolleri, ağlar ve birimlerle konteynerleştir.",
+        "fi": "Kontita tämä palvelu Docker Composella käyttäen turvallisia imageja, terveystarkistuksia, verkkoja ja volumeja.",
+        "sw": "Weka huduma hii kwenye kontena kwa Docker Compose, images salama, health checks, mitandao na volumes.",
+        "ig": "Tinye service a na container site na Docker Compose, secure images, health checks, networks na volumes.",
+        "am": "ይህን service በDocker Compose፣ secure images፣ health checks፣ networks እና volumes ኮንቴነር አድርግ።"
+      }
+    },
+    {
+      "id": "investor-deck",
+      "kind": "positive",
+      "required_skills": ["investor-materials"],
+      "queries": {
+        "en": "Build an investor pitch deck, one-pager, financial narrative, and fundraising memo for this startup.",
+        "th": "ทำ pitch deck นักลงทุน one-pager เรื่องเล่าทางการเงิน และ fundraising memo สำหรับสตาร์ทอัพนี้",
+        "zh": "为这家初创公司制作投资者路演稿、单页简介、财务叙事和融资备忘录。",
+        "ja": "このスタートアップ向けに投資家用ピッチデック、ワンページャー、財務ストーリー、資金調達メモを作成して。",
+        "es": "Prepara un pitch deck para inversores, un one-pager, una narrativa financiera y un memo de recaudación para esta startup.",
+        "ar": "أنشئ عرضًا للمستثمرين وملخصًا من صفحة واحدة وسردًا ماليًا ومذكرة لجمع التمويل لهذه الشركة الناشئة.",
+        "hi": "इस स्टार्टअप के लिए निवेशक पिच डेक, वन-पेजर, वित्तीय कथा और फंडरेज़िंग मेमो बनाएँ।",
+        "tr": "Bu girişim için yatırımcı sunumu, tek sayfalık özet, finansal anlatı ve fon toplama notu hazırla.",
+        "fi": "Laadi tälle startupille sijoittajapitch, yhden sivun esite, taloudellinen tarina ja varainhankintamuistio.",
+        "sw": "Tengeneza pitch deck ya wawekezaji, one-pager, simulizi la kifedha na memo ya kutafuta fedha kwa startup hii.",
+        "ig": "Mepụta investor pitch deck, one-pager, financial narrative na fundraising memo maka startup a.",
+        "am": "ለዚህ startup የኢንቨስተር pitch deck፣ one-pager፣ financial narrative እና fundraising memo አዘጋጅ።"
+      }
+    },
+    {
+      "id": "meeting-summary",
+      "kind": "silence",
+      "required_skills": [],
+      "queries": {
+        "en": "Summarize yesterday's team meeting in five bullet points.",
+        "th": "สรุปประชุมทีมเมื่อวานเป็นห้าข้อ",
+        "zh": "把昨天的团队会议总结成五个要点。",
+        "ja": "昨日のチーム会議を5つの箇条書きで要約して。",
+        "es": "Resume la reunión de equipo de ayer en cinco puntos.",
+        "ar": "لخّص اجتماع الفريق بالأمس في خمس نقاط.",
+        "hi": "कल की टीम बैठक को पाँच बिंदुओं में संक्षेपित करें।",
+        "tr": "Dünkü ekip toplantısını beş maddede özetle.",
+        "fi": "Tiivistä eilinen tiimikokous viiteen kohtaan.",
+        "sw": "Fupisha mkutano wa timu wa jana kwa hoja tano.",
+        "ig": "Kọwaa nzukọ otu ụnyaahụ n'ime isi ihe ise.",
+        "am": "የትናንቱን የቡድን ስብሰባ በአምስት ነጥቦች አጠቃልል።"
+      }
+    },
+    {
+      "id": "short-poem",
+      "kind": "silence",
+      "required_skills": [],
+      "queries": {
+        "en": "Write a short poem about rain on a quiet train platform.",
+        "th": "เขียนบทกวีสั้นๆ เกี่ยวกับฝนบนชานชาลารถไฟที่เงียบสงบ",
+        "zh": "写一首关于安静站台上雨景的短诗。",
+        "ja": "静かな駅のホームに降る雨について短い詩を書いて。",
+        "es": "Escribe un poema corto sobre la lluvia en un andén tranquilo.",
+        "ar": "اكتب قصيدة قصيرة عن المطر على رصيف قطار هادئ.",
+        "hi": "शांत रेलवे प्लेटफ़ॉर्म पर बारिश के बारे में एक छोटी कविता लिखें।",
+        "tr": "Sessiz bir tren peronundaki yağmur hakkında kısa bir şiir yaz.",
+        "fi": "Kirjoita lyhyt runo sateesta hiljaisella junalaiturilla.",
+        "sw": "Andika shairi fupi kuhusu mvua kwenye jukwaa tulivu la treni.",
+        "ig": "Dee obere uri gbasara mmiri ozuzo n'elu ọdụ ụgbọ oloko dị jụụ.",
+        "am": "በጸጥታ የባቡር መድረክ ላይ ስለሚዘንብ ዝናብ አጭር ግጥም ጻፍ።"
+      }
+    },
+    {
+      "id": "simple-arithmetic",
+      "kind": "silence",
+      "required_skills": [],
+      "queries": {
+        "en": "What is 37 multiplied by 18?",
+        "th": "37 คูณ 18 ได้เท่าไร",
+        "zh": "37 乘以 18 等于多少？",
+        "ja": "37かける18はいくつ？",
+        "es": "¿Cuánto es 37 multiplicado por 18?",
+        "ar": "كم يساوي 37 مضروبًا في 18؟",
+        "hi": "37 को 18 से गुणा करने पर कितना होगा?",
+        "tr": "37 çarpı 18 kaç eder?",
+        "fi": "Paljonko on 37 kertaa 18?",
+        "sw": "37 mara 18 ni ngapi?",
+        "ig": "Gịnị bụ 37 mụbaa 18?",
+        "am": "37 በ18 ሲባዛ ስንት ነው?"
+      }
+    },
+    {
+      "id": "casual-greeting",
+      "kind": "silence",
+      "required_skills": [],
+      "queries": {
+        "en": "Good morning, how are you today?",
+        "th": "สวัสดีตอนเช้า วันนี้เป็นอย่างไรบ้าง",
+        "zh": "早上好，你今天怎么样？",
+        "ja": "おはよう、今日は元気？",
+        "es": "Buenos días, ¿cómo estás hoy?",
+        "ar": "صباح الخير، كيف حالك اليوم؟",
+        "hi": "सुप्रभात, आज आप कैसे हैं?",
+        "tr": "Günaydın, bugün nasılsın?",
+        "fi": "Hyvää huomenta, mitä sinulle kuuluu tänään?",
+        "sw": "Habari za asubuhi, unaendeleaje leo?",
+        "ig": "Ụtụtụ ọma, kedu ka ị dị taa?",
+        "am": "እንደምን አደርክ፣ ዛሬ እንዴት ነህ?"
+      }
+    },
+    {
+      "id": "plain-translation",
+      "kind": "silence",
+      "required_skills": [],
+      "queries": {
+        "en": "Translate the sentence 'The library closes at six' into French.",
+        "th": "แปลประโยค 'ห้องสมุดปิดหกโมง' เป็นภาษาฝรั่งเศส",
+        "zh": "把“图书馆六点关门”翻译成法语。",
+        "ja": "「図書館は6時に閉まります」をフランス語に訳して。",
+        "es": "Traduce la frase «La biblioteca cierra a las seis» al francés.",
+        "ar": "ترجم جملة «تغلق المكتبة عند السادسة» إلى الفرنسية.",
+        "hi": "वाक्य 'पुस्तकालय छह बजे बंद होता है' का फ्रेंच में अनुवाद करें।",
+        "tr": "'Kütüphane saat altıda kapanır' cümlesini Fransızcaya çevir.",
+        "fi": "Käännä lause 'Kirjasto sulkeutuu kuudelta' ranskaksi.",
+        "sw": "Tafsiri sentensi 'Maktaba hufungwa saa kumi na mbili' kwa Kifaransa.",
+        "ig": "Tụgharịa ahịrịokwu 'Ọbá akwụkwọ na-emechi n'elekere isii' gaa French.",
+        "am": "‘ቤተ መጻሕፍቱ በስድስት ሰዓት ይዘጋል’ የሚለውን ወደ ፈረንሳይኛ ተርጉም።"
+      }
+    }
+  ]
+}

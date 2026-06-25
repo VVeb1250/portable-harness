@@ -1,0 +1,1 @@
+"""Multilingual skill-router benchmark."""
