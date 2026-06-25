@@ -68,6 +68,14 @@ class SkillSuggestionTests(unittest.TestCase):
                     "disclosure, and bundled resources."
                 ),
             ),
+            _skill(
+                "deploy-model",
+                (
+                    "Deploy Azure OpenAI models with intelligent intent-based "
+                    "routing, capacity discovery, agent creation, and MCP tool "
+                    "configuration."
+                ),
+            ),
         )
 
     def test_clear_match_pushes_skill_ids_without_skill_bodies(self) -> None:
@@ -108,6 +116,10 @@ class SkillSuggestionTests(unittest.TestCase):
         self.assertEqual(result.suggestions[0].skill, "agent-harness-construction")
         self.assertNotIn(
             "write-a-skill",
+            {item.skill for item in result.suggestions},
+        )
+        self.assertNotIn(
+            "deploy-model",
             {item.skill for item in result.suggestions},
         )
 
