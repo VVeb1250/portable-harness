@@ -21,6 +21,11 @@ class RecordingRunner:
         return self.outputs.pop(0) if self.outputs else "stored"
 
 
+class FailingRunner:
+    def __call__(self, command: list[str]) -> str:
+        raise RuntimeError("simulated ICM failure")
+
+
 class BlackboardContractTests(unittest.TestCase):
     def test_write_uses_run_scoped_topic_and_versioned_payload(self) -> None:
         runner = RecordingRunner()
@@ -135,6 +140,78 @@ class BlackboardContractTests(unittest.TestCase):
         self.assertEqual(bad_scope.status, "error")
         self.assertEqual(bad_entry.status, "error")
         self.assertEqual(runner.commands, [])
+
+    def test_icm_failures_and_invalid_json_return_recovery_guidance(self) -> None:
+        scope = BlackboardScope(project="p", run_id="r")
+        entry = BlackboardEntry(role="planner", kind="plan", content="plan")
+
+        write = IcmBlackboard(runner=FailingRunner()).write(scope, entry)
+        read_failure = IcmBlackboard(runner=FailingRunner()).read(scope)
+        invalid_json = IcmBlackboard(runner=RecordingRunner(["not-json"])).read(scope)
+
+        self.assertEqual(write.status, "error")
+        self.assertEqual(read_failure.status, "error")
+        self.assertEqual(invalid_json.status, "error")
+        self.assertTrue(write.next_actions)
+        self.assertTrue(read_failure.next_actions)
+
+    def test_validation_covers_entry_and_read_boundaries(self) -> None:
+        runner = RecordingRunner()
+        board = IcmBlackboard(runner=runner)
+        scope = BlackboardScope(project="p", run_id="r")
+
+        results = [
+            board.write(scope, BlackboardEntry(role="planner", kind="plan", content="")),
+            board.write(
+                scope,
+                BlackboardEntry(role="planner", kind="plan", content="x" * 4_001),
+            ),
+            board.write(
+                scope,
+                BlackboardEntry(
+                    role="planner",
+                    kind="plan",
+                    content="plan",
+                    artifact="bad\npath",
+                ),
+            ),
+            board.read(scope, query="x" * 501),
+            board.read(scope, kind="unknown"),  # type: ignore[arg-type]
+            board.read(scope, limit=0),
+        ]
+
+        self.assertTrue(all(result.status == "error" for result in results))
+        self.assertEqual(runner.commands, [])
+
+    def test_parser_accepts_wrapped_json_and_ignores_invalid_entries(self) -> None:
+        valid = {
+            "summary": json.dumps(
+                {
+                    "schema": "paw-blackboard/v1",
+                    "project": "p",
+                    "run_id": "r",
+                    "role": "reviewer",
+                    "kind": "review",
+                    "content": "PASS",
+                    "artifact": "review.txt",
+                }
+            )
+        }
+        invalid = [
+            {"summary": 42},
+            {"summary": "not-json"},
+            {"summary": json.dumps({"schema": "other"})},
+        ]
+        runner = RecordingRunner(
+            [json.dumps({"memories": [*invalid, valid, "not-a-memory"]})]
+        )
+        result = IcmBlackboard(runner=runner).read(
+            BlackboardScope(project="p", run_id="r")
+        )
+
+        self.assertEqual(len(result.entries), 1)
+        self.assertEqual(result.artifacts, ("review.txt",))
+        self.assertEqual(result.to_dict()["status"], "success")
 
 
 class BlackboardCliIntegrationTests(unittest.TestCase):
