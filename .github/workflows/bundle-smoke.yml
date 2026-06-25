@@ -1,0 +1,93 @@
+name: bundle cross-OS smoke
+
+# Proves the bundle's candidate CLIs run on every shipped OS target, closing the
+# macOS-exec gap that cannot be tested on the Windows dev box. This is the
+# "pinned Windows/Linux/macOS smoke" gate that docs/CATALOG-DEEP-VET-2026-06-25
+# requires before promoting `quality-gate` and `api-quality` candidate->ready.
+#
+#   cli-binaries : prek + actionlint + lychee + hurl (prebuilt binary download)
+#   testmon      : pytest-testmon (pip, language-tiered test-affected anchor)
+#
+# code2prompt (repo-pack) has its own code2prompt-smoke.yml.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/bundle-smoke.yml'
+      - '.github/scripts/bundle-smoke.sh'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash   # uniform script across all four runners (Git Bash on Windows)
+
+jobs:
+  cli-binaries:
+    name: clis ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+            rust_triple: x86_64-unknown-linux-gnu
+            go_osarch: linux_amd64
+            ext: tar.gz
+          - os: macos-15-intel      # Intel x64
+            label: macos-x64
+            rust_triple: x86_64-apple-darwin
+            go_osarch: darwin_amd64
+            ext: tar.gz
+          - os: macos-latest        # Apple Silicon arm64
+            label: macos-arm64
+            rust_triple: aarch64-apple-darwin
+            go_osarch: darwin_arm64
+            ext: tar.gz
+          - os: windows-latest
+            label: windows-x64
+            rust_triple: x86_64-pc-windows-msvc
+            go_osarch: windows_amd64
+            ext: zip
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke prebuilt CLIs (download -> extract -> version -> probe)
+        env:
+          RUST_TRIPLE: ${{ matrix.rust_triple }}
+          GO_OSARCH: ${{ matrix.go_osarch }}
+          EXT: ${{ matrix.ext }}
+        run: bash .github/scripts/bundle-smoke.sh
+
+  testmon:
+    name: testmon ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15-intel, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install paw + testmon, select affected tests
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest pytest-testmon
+          # baseline run builds the coverage->test dependency map
+          python -m pytest --testmon tests/ -q
+          test -f .testmondata || { echo "::error::.testmondata not created on $RUNNER_OS"; exit 1; }
+          # rerun with no source change -> AST-aware selection runs zero tests.
+          # pytest exits 5 ("no tests ran") when all are deselected; accept it.
+          set +e
+          python -m pytest --testmon tests/ -q | tee rerun.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          [ "$rc" = 0 ] || [ "$rc" = 5 ] || { echo "::error::unexpected pytest rc=$rc on $RUNNER_OS"; exit 1; }
+          grep -qiE 'no tests ran|[0-9]+ deselected|[0-9]+ passed' rerun.txt
+          echo "testmon dependency map works on $RUNNER_OS"
