@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -131,6 +135,72 @@ class BlackboardContractTests(unittest.TestCase):
         self.assertEqual(bad_scope.status, "error")
         self.assertEqual(bad_entry.status, "error")
         self.assertEqual(runner.commands, [])
+
+
+class BlackboardCliIntegrationTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("icm.exe"), "ICM CLI is not installed")
+    def test_cli_round_trip_uses_isolated_icm_database(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = str(Path(directory) / "blackboard.db")
+            write = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "paw",
+                    "blackboard",
+                    "write",
+                    "--project",
+                    "portable-harness",
+                    "--run-id",
+                    "integration-1",
+                    "--role",
+                    "planner",
+                    "--kind",
+                    "plan",
+                    "--content",
+                    "Implement the adapter, then run isolated integration tests.",
+                    "--artifact",
+                    "plans/integration-1.md",
+                    "--db",
+                    database,
+                    "--json",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(write.returncode, 0, write.stderr)
+
+            read = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "paw",
+                    "blackboard",
+                    "read",
+                    "--project",
+                    "portable-harness",
+                    "--run-id",
+                    "integration-1",
+                    "--query",
+                    "adapter integration tests",
+                    "--limit",
+                    "5",
+                    "--db",
+                    database,
+                    "--json",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(read.returncode, 0, read.stderr)
+            payload = json.loads(read.stdout)
+            self.assertEqual(payload["status"], "success")
+            self.assertEqual(len(payload["entries"]), 1)
+            self.assertEqual(payload["entries"][0]["role"], "planner")
+            self.assertEqual(payload["entries"][0]["kind"], "plan")
 
 
 if __name__ == "__main__":
