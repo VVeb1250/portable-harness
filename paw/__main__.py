@@ -86,7 +86,11 @@ def main(argv: list[str] | None = None) -> int:
         choices=("auto", "simple", "complex"),
         default="auto",
     )
-    router.add_argument("--risk", choices=("low", "medium", "high"), default="medium")
+    router.add_argument(
+        "--risk",
+        choices=("auto", "low", "medium", "high"),
+        default="auto",
+    )
     router.add_argument(
         "--sensitivity",
         choices=("public", "private", "restricted"),
