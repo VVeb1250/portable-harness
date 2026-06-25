@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from typing import Sequence
 
-from paw.skill_graph import SkillGraph
+from paw.skill_graph import SkillGraph, load_skill_graph
 from paw.skill_router import (
     SkillRecord,
     build_task_capsule,
@@ -489,6 +489,50 @@ class SkillDiscoveryTests(unittest.TestCase):
         )
         self.assertTrue(
             payload["candidates"][0]["skill_path"].endswith("SKILL.md")
+        )
+
+    def test_graph_loader_compiles_overlay_against_discovered_skills(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill_dir = root / "agent-harness-construction"
+            skill_dir.mkdir()
+            (skill_dir / "SKILL.md").write_text(
+                "---\n"
+                "name: agent-harness-construction\n"
+                "description: Design agent routing and action spaces.\n"
+                "---\n",
+                encoding="utf-8",
+            )
+            graph_path = root / "skill-graph.json"
+            graph_path.write_text(
+                json.dumps(
+                    {
+                        "nodes": [
+                            {
+                                "id": "intent:agent-routing",
+                                "kind": "intent",
+                                "text": "Design agent routing and skill selection.",
+                            }
+                        ],
+                        "edges": [
+                            {
+                                "from": "intent:agent-routing",
+                                "to": "agent-harness-construction",
+                                "relation": "routes_to",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            skills = discover_skills((root,))
+
+            graph = load_skill_graph(graph_path, skills)
+            expanded = graph.expand({"intent:agent-routing": 0.90})
+
+        self.assertEqual(
+            tuple(item.skill.name for item in expanded),
+            ("agent-harness-construction",),
         )
 
 
