@@ -9,6 +9,8 @@ agent context until the agent explicitly pulls one.
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -47,6 +49,20 @@ _MAX_SUGGESTIONS = 2
 _MAX_CANDIDATES = 3
 _MAX_ANCHORS = 6
 _MAX_ROUTING_TEXT = 32 * 1024
+
+# Cross-host skill catalogs. Each host keeps SKILL.md trees under
+# `<host>/skills`; we scan every known host at project then home scope so the
+# router stays portable across Claude Code, Codex, Gemini, Cursor, and the
+# vendor-neutral `.agents` convention without hardcoding a single host.
+_SKILL_HOST_DIRS = (".claude", ".codex", ".agents", ".gemini", ".cursor")
+_SKILLS_SUBDIR = "skills"
+_SKILL_ROOTS_ENV = "PAW_SKILL_ROOTS"
+# Claude Code records every enabled plugin and its exact versioned install path
+# here. It is the authoritative source for plugin (e.g. ECC) skill trees, so we
+# scan those paths instead of crawling disabled marketplaces or guessing
+# versions. Each install path holds host-variant `<host>/skills` subtrees that
+# discovery's recursive SKILL.md walk picks up; name-dedup collapses the copies.
+_PLUGIN_MANIFEST = (".claude", "plugins", "installed_plugins.json")
 
 
 @dataclass(frozen=True)
@@ -276,13 +292,73 @@ def discover_skills(roots: Sequence[Path]) -> tuple[SkillRecord, ...]:
 
 
 def default_skill_roots(cwd: Path | None = None) -> tuple[Path, ...]:
+    """Cross-host skill catalog roots, deduped and in priority order.
+
+    ``PAW_SKILL_ROOTS`` (os.pathsep-separated paths) overrides discovery
+    entirely. Otherwise every known host skill dir is scanned at project scope
+    first, then home scope, so a project-local skill shadows a same-named global
+    one (``discover_skills`` keeps the first occurrence). Absent dirs are
+    tolerated by discovery, so they are left in rather than stat-filtered here.
+    """
+    override = os.environ.get(_SKILL_ROOTS_ENV)
+    if override:
+        return _dedupe_paths(
+            Path(part).expanduser()
+            for part in override.split(os.pathsep)
+            if part.strip()
+        )
+
     base = cwd or Path.cwd()
     home = Path.home()
-    return (
-        base / ".agents" / "skills",
-        home / ".codex" / "skills",
-        home / ".agents" / "skills",
-    )
+    roots = [
+        scope / host / _SKILLS_SUBDIR
+        for scope in (base, home)
+        for host in _SKILL_HOST_DIRS
+    ]
+    roots.extend(_plugin_skill_roots(home))
+    return _dedupe_paths(roots)
+
+
+def _plugin_skill_roots(home: Path) -> list[Path]:
+    """Canonical skill dirs of enabled Claude Code plugins, from the manifest.
+
+    Each install path is expanded only to its canonical skill trees — bare
+    ``skills/`` first (the language-neutral superset), then per-host variants —
+    rather than rglob'd whole. This deliberately skips localized mirrors such as
+    ``docs/<lang>/skills`` (translated descriptions are noise; the semantic
+    scorer matches cross-lingually from the English text) and minor-host copies.
+    Listing ``skills/`` first lets it win name-dedup over the variant subsets.
+    Absent or malformed manifests yield no roots; discovery tolerates paths that
+    do not exist, so other hosts simply contribute nothing here.
+    """
+    try:
+        data = json.loads(home.joinpath(*_PLUGIN_MANIFEST).read_text("utf-8"))
+    except (OSError, ValueError):
+        return []
+    plugins = data.get("plugins") if isinstance(data, dict) else None
+    if not isinstance(plugins, dict):
+        return []
+    roots: list[Path] = []
+    for records in plugins.values():
+        for record in records if isinstance(records, list) else ():
+            path = record.get("installPath") if isinstance(record, dict) else None
+            if not (isinstance(path, str) and path.strip()):
+                continue
+            install = Path(path)
+            roots.append(install / _SKILLS_SUBDIR)
+            roots.extend(install / host / _SKILLS_SUBDIR for host in _SKILL_HOST_DIRS)
+    return roots
+
+
+def _dedupe_paths(paths: Iterable[Path]) -> tuple[Path, ...]:
+    seen: set[str] = set()
+    ordered: list[Path] = []
+    for path in paths:
+        key = os.path.normcase(str(path))
+        if key not in seen:
+            seen.add(key)
+            ordered.append(path)
+    return tuple(ordered)
 
 
 def _semantic_scores(
