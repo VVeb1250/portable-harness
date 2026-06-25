@@ -1879,7 +1879,7 @@
       "compat_notes": "These tools compose rather than overlap: prek schedules repository hooks, actionlint validates Actions workflows, and lychee validates links. Keep language-specific linters in project dependencies instead of making paw install one universal linter.",
       "verified": {
         "date": "2026-06-25",
-        "status": "Primary-source deep-vet passed for portability, maintenance, license, and deterministic value. Cross-OS smoke wired (.github/workflows/bundle-smoke.yml: prek v0.4.5 + actionlint v1.7.12 + lychee v0.24.2 prebuilt download->version->behavioral probe on linux-x64/macos-x64/macos-arm64/windows-x64). windows-x64 proven locally 2026-06-26 (all three ran; actionlint flagged a broken workflow, lychee resolved an offline link); linux + macOS columns pending first CI dispatch. Promote candidate->ready after the 4-OS matrix is green. Output-size benchmark still pending.",
+        "status": "Primary-source deep-vet passed for portability, maintenance, license, and deterministic value. Cross-OS smoke wired (.github/workflows/bundle-smoke.yml: prek v0.4.5 + actionlint v1.7.12 + lychee v0.24.2 prebuilt download->version->behavioral probe on linux-x64/macos-x64/macos-arm64/windows-x64). 4-OS matrix GREEN in CI (run 28181495807, 2026-06-26): linux-x64 + macos-x64 + macos-arm64 + windows-x64 all pass (download->extract->version->probe; actionlint flagged a broken workflow, lychee resolved an offline link on every OS). Cross-OS gate PASSED; remaining gate before candidate->ready = a compact-output/diagnostic-size benchmark.",
         "hosts": []
       }
     },
@@ -1964,7 +1964,7 @@
       "compat_notes": "Complements browser-automation: Hurl verifies HTTP contracts without a browser; browser-harness remains for JS-rendered interaction and visual/user flows. Complements secure-agent by keeping credentials in variables/environment instead of committed test files.",
       "verified": {
         "date": "2026-06-25",
-        "status": "Primary-source deep-vet passed. Hurl is mature, cross-platform, single-binary, and CI-oriented. Cross-OS smoke wired (.github/workflows/bundle-smoke.yml: hurl v8.0.1 prebuilt download->--version on linux-x64/macos-x64/macos-arm64/windows-x64). windows-x64 proven locally 2026-06-26; linux + macOS columns pending first CI dispatch. Promote candidate->ready after the 4-OS matrix is green plus a fixture-based compact-output comparison.",
+        "status": "Primary-source deep-vet passed. Hurl is mature, cross-platform, single-binary, and CI-oriented. Cross-OS smoke wired (.github/workflows/bundle-smoke.yml: hurl v8.0.1 prebuilt download->--version on linux-x64/macos-x64/macos-arm64/windows-x64). 4-OS matrix GREEN in CI (run 28181495807, 2026-06-26): hurl v8.0.1 prebuilt ran on linux-x64 + macos-x64 + macos-arm64 + windows-x64. Cross-OS gate PASSED; remaining gate before candidate->ready = a fixture-based compact-output comparison (curl/raw vs hurl --test).",
         "hosts": []
       }
     }
