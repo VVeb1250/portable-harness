@@ -309,7 +309,9 @@ def _parse_entry(
     memory: dict[str, object],
     scope: BlackboardScope,
 ) -> BlackboardEntry | None:
-    raw = memory.get("content")
+    # ICM's machine-readable field is currently named `summary`; accept
+    # `content` as well so the adapter remains compatible with older/fake runners.
+    raw = memory.get("summary", memory.get("content"))
     if not isinstance(raw, str):
         return None
     try:

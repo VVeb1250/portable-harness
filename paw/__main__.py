@@ -10,7 +10,15 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
+from paw.blackboard import (
+    ENTRY_KINDS,
+    BlackboardEntry,
+    BlackboardResult,
+    BlackboardScope,
+    IcmBlackboard,
+)
 from paw.router import RouteRequest, route
 from paw.sets.loader import SetsError, get_set, load_all
 
@@ -68,6 +76,47 @@ def _route(args: argparse.Namespace) -> int:
     return 0 if decision.status != "error" else 1
 
 
+def _print_blackboard_result(result: BlackboardResult, as_json: bool) -> int:
+    if as_json:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(result.summary)
+        for entry in result.entries:
+            print(f"[{entry.kind}] {entry.role}: {entry.content}")
+            if entry.artifact:
+                print(f"  artifact: {entry.artifact}")
+        if result.next_actions:
+            print("next:")
+            for action in result.next_actions:
+                print(f"  - {action}")
+    return 0 if result.status != "error" else 1
+
+
+def _blackboard(args: argparse.Namespace) -> int:
+    board = IcmBlackboard(database=Path(args.db) if args.db else None)
+    scope = BlackboardScope(project=args.project, run_id=args.run_id)
+    if args.blackboard_action == "write":
+        result = board.write(
+            scope,
+            BlackboardEntry(
+                role=args.role,
+                kind=args.kind,
+                content=args.content,
+                artifact=args.artifact,
+                importance=args.importance,
+            ),
+        )
+        return _print_blackboard_result(result, args.json)
+    result = board.read(
+        scope,
+        query=args.query,
+        role=args.role,
+        kind=args.kind,
+        limit=args.limit,
+    )
+    return _print_blackboard_result(result, args.json)
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="paw",
                                 description="port-a-whip (paw) — curated cross-host agent harness")
@@ -105,6 +154,39 @@ def main(argv: list[str] | None = None) -> int:
     router.add_argument("--max-budget-usd", type=float)
     router.add_argument("--json", action="store_true")
 
+    blackboard = sub.add_parser(
+        "blackboard",
+        help="share explicit team state through an ICM-backed blackboard",
+    )
+    blackboard_sub = blackboard.add_subparsers(
+        dest="blackboard_action",
+        required=True,
+    )
+    write = blackboard_sub.add_parser("write", help="share one bounded entry")
+    write.add_argument("--project", required=True)
+    write.add_argument("--run-id", required=True)
+    write.add_argument("--role", required=True)
+    write.add_argument("--kind", choices=sorted(ENTRY_KINDS), required=True)
+    write.add_argument("--content", required=True)
+    write.add_argument("--artifact")
+    write.add_argument(
+        "--importance",
+        choices=("critical", "high", "medium", "low"),
+        default="medium",
+    )
+    write.add_argument("--db", help="ICM SQLite path; omit to use configured memory")
+    write.add_argument("--json", action="store_true")
+
+    read = blackboard_sub.add_parser("read", help="recall bounded entries")
+    read.add_argument("--project", required=True)
+    read.add_argument("--run-id", required=True)
+    read.add_argument("--query", default="blackboard")
+    read.add_argument("--role")
+    read.add_argument("--kind", choices=sorted(ENTRY_KINDS))
+    read.add_argument("--limit", type=int, default=10)
+    read.add_argument("--db", help="ICM SQLite path; omit to use configured memory")
+    read.add_argument("--json", action="store_true")
+
     args = p.parse_args(argv)
     if args.group == "sets":
         if args.action == "list":
@@ -113,6 +195,8 @@ def main(argv: list[str] | None = None) -> int:
             return _sets_show(args.name)
     if args.group == "route":
         return _route(args)
+    if args.group == "blackboard":
+        return _blackboard(args)
     p.print_help()
     return 2
 
