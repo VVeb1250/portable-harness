@@ -60,7 +60,22 @@
 - **paw router + blackboard** — route decision and shared-state CLIs live; total test suite 23.
 - **swe-probe** `bench/swe_probe/` — frozen SymPy N=8 evidence; verifier runs without paid arms.
 - WSL Ubuntu + swebench + Docker Desktop (flask env-image cached, eval ~1-2min). `$env:DEEPSEEK_API_KEY` set. ccusage 20.0.14 · tiktoken 0.13.0 · iii.exe PATH.
-- **GateGuard hook** = ECC, fact-forcing บน Bash/Edit/Write (fires ทุก op session นี้). disable = `ECC_GATEGUARD=off`.
+- **ECC plugin hooks** = 24 hooks (node-spawn ทุก tool-call, CC-locked). **DECISION 2026-06-25: `ECC_HOOK_PROFILE=minimal`** set ใน `~/.claude/settings.json` `env` (มีผล session หน้า). minimal = ตัด tier `standard` (gateguard fact-force, ecc-context-monitor cost-warning, quality-gate, console/design/doc warnings, suggest-compact) เก็บเฉพาะ minimal-tier (observe/metrics/cost-tracker/session-end = เงียบ, feed ICM). knob อื่น: `ECC_DISABLED_HOOKS=id,id` (surgical) · `ECC_GATEGUARD=off` (gate ตัวเดียว).
+
+### ECC hook → harness mapping (ไม่ port — ส่วนใหญ่ harness มี cross-host แล้ว)
+
+> เหตุผล: ECC hook = node-spawn/tool-call (per-turn tax, ขัด #7) + CC-locked (ขัด #8). ~80% ซ้ำของเดิม. **author-once-per-host idiom (rtk/nah/ICM pattern) > copy ECC bundle.**
+
+| ECC hook | harness equivalent (cross-host) | verdict |
+|---|---|---|
+| config-protection · governance-capture | **nah** (BLOCK/ASK) + secure-agent (gitleaks/osv) | harness แข็งกว่า → skip |
+| quality-gate · format-typecheck (Biome/tsc) | **ruff/mypy CLI** (0-tax, python) | skip (node→CLI) |
+| cost-tracker · ecc-context-monitor | **ccusage + bench/** | skip (ECC cost=CC-only) |
+| observe · evaluate-session · metrics-bridge | **ICM** (18-host learning, adopt-all bridge LIVE) | **keep ECC ON** (minimal เก็บไว้) = bridge เดียวที่ net-positive |
+| session-start/end ctx | ICM session-hook + context-mode SessionStart | skip |
+| console-warn · design-quality-check · doc-file-warning · desktop-notify | — (JS/frontend/macOS, irrelevant repo python) | skip |
+
+**Residual (harness ยังไม่มี, gate ก่อนทำ):** (1) gateguard "investigate-before-mutate" — overlap mindset #9, low ROI; ถ้าเอา = gate เฉพาะ code-file load-bearing (ข้าม md/memory), opt-in. (2) scope-creep/tool-loop detector — signal มีค่าแต่ threshold+cross-host ยาก. **ทำเป็น per-host thin-hook ตาม enforce-tier (A=CC hook · B=Gemini init · C=Codex AGENTS.md) เท่านั้น ห้าม copy ECC node-bundle.** A2 gate: พิสูจน์ว่าขาดจริงก่อน polish.
 
 ## D. HISTORICAL BENCH LOG — frozen; canonical truth is §0 + manifest
 
