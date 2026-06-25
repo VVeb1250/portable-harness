@@ -1,8 +1,19 @@
 # STATUS — session state (compact-survival)
 
-> อัพเดท: 2026-06-24 · state ก้อนเดียวให้ session หลัง-compact resume ได้ครบ. **resume: อ่าน §A (identity) → §D (current work) ก่อน.**
+> อัพเดท: 2026-06-25 · state ก้อนเดียวให้ session หลัง-compact resume ได้ครบ. **resume: อ่าน §0 (current truth) → §F (next) ก่อน.**
 > Doc map: [CLAUDE.md](../CLAUDE.md) mindset+routing · [ARCHITECTURE.md](./ARCHITECTURE.md) blueprint · [SHARED-BRAIN.md](./SHARED-BRAIN.md) L0 · [BENCH.md](./BENCH.md) bench detail · **STATUS.md (นี่)** = current truth.
 > ⚠️ ประวัติ handoff ละเอียด §1-16 (pre-pivot harness framing → ECC collision → fork → context-mode adopt → swe-probe round 1) = **condensed ลงนี่แล้ว**; กู้เต็มได้ที่ git ก่อน commit `71a2815`.
+
+---
+
+## 0. CURRENT TRUTH — authoritative
+
+- **economics gate ผ่าน:** frozen SymPy N=8 = `team3 5/8 > codex-solo 4/8 > claude-solo 2/6 ≈ deepseek-solo 2/8`. Canonical manifest: `bench/swe_probe/FROZEN_N8_2026-06-25.json`; verify with `python bench/swe_probe/verify_freeze.py`.
+- **router live:** `python -m paw route` — deterministic complexity/risk/privacy/budget/fallback policy + JSON contract; 14 tests, 91.3% statement coverage.
+- **shared blackboard live:** `python -m paw blackboard write/read` — ICM topic `<project>/blackboard/<run-id>`, versioned/bounded/secret-safe; real isolated ICM SQLite round-trip passes.
+- **portable claim:** decision + data protocol portable; execution and enforcement remain host-tiered. Do not claim uniform hooks/security.
+- **next:** build Team Kernel vertical slice: RouteDecision → Planner → Implementer → Reviewer → evaluator/stop, using ICM blackboard handoffs.
+- **benchmark is frozen:** do not append to the N=8 cohort. New repo/model/N requires a new dated cohort and manifest.
 
 ---
 
@@ -16,9 +27,9 @@
 - **L0 scope = thin + team-shaped:** สร้างเฉพาะ shared-brain(ICM) + cross-host wiring + seat-router. general-harness breadth (skills/instincts) = ECC ทำแล้ว → wrap/ปล่อย.
 - **moat:** distro ตาย (ECC ทำแล้ว). moat จริง = personal cost/quota economics (ride seat) + agentic + shared-brain glue ที่ Fusion/ECC ไม่มี. L2-team value = **cost/quota ไม่ใช่ quality** (literature: solo ≥ team on quality compute-controlled).
 
-## A2. CONCEPT SCORECARD — เสา 3 ต้น อยู่ตรงไหน (audit 2026-06-24)
+## A2. HISTORICAL SCORECARD — superseded by §0
 
-> meta-verdict: **track ถูก (measure-before-build), เสายังเป็นโครง — โดยตั้งใจ.** เสา 1-3 ยังไม่ครบเพราะ **ยังไม่มี consumer จริง** (heterogeneous members ยังไม่เกิด → gate ด้วย economics §D). ⚠️ อย่า polish เสาก่อน #3 ตอบ = portaw รอบ 4 (build C-tier ที่ rent ได้).
+> Historical pre-benchmark snapshot retained for decision history. It is no longer current: heterogeneous team economics, router v0, and ICM blackboard v1 now exist.
 
 | เสา | แพลน (§A) | สถานะจริงวันนี้ | gap ที่เหลือ |
 |---|---|---|---|
@@ -34,23 +45,26 @@
 |---|---|---|
 | ① vendored subtree | portaw installer subtree (agents_md/runner/install/healthcheck/state/router-wiring) → `paw/` |
 | ② dependency (install+call) | **ICM**(mem) · **rtk**(token) · **nah**/gitleaks/osv/infisical(secure) · codegraph/ast-grep/context7(sets) · **context-mode**(compress+session-mem+cross-host MCP) · **DeepSeek API**(workhorse cross-vendor) · OpenRouter Fusion |
-| ③ fork skeleton (1 ตัว, ยังไม่เลือก) | agent-team: **Agyn** OR **MASAI** — port pattern จาก HyperAgent/ALMAS · +AgentPool(seat-riding) |
+| ③ team kernel | build the proven team3 contract first; evaluate Agyn/MASAI/AgentPool only from observed gaps |
 | ④ wrap/interop | **ECC** (member รัน ECC เป็น L0; paw bridge บนนั้น) |
 | ⑤ reference only | agentmemory(mem ceiling) · MoA(ensemble ref) · SWE-bench-Lite(task data) |
 
-→ fork จริง = ① portaw subtree + ③ agent-team skeleton 1 ตัว (ยังไม่เลือก). ที่เหลือ = install+call หรือ read-then-port-idea. **ไม่ใช่ merge N codebase.**
+→ no framework fork yet. Build a small vertical slice first; rent/fork only when a concrete missing capability appears.
 
 ## C. LIVE env + components (what actually runs)
 
-- **ICM 0.10.53** (`%LOCALAPPDATA%\icm\bin\icm.exe`) — semantic memory, CLI=0-tax. ⚠️ PowerShell `icm`=Invoke-Command alias → เรียก `icm.exe`/full path. store/recall LIVE.
+- **ICM 0.10.57** (`%LOCALAPPDATA%\icm\bin\icm.exe`) — semantic memory + paw blackboard backend, CLI=0-tax. ⚠️ PowerShell `icm`=Invoke-Command alias → เรียก `icm.exe`/full path.
 - **rtk** — token-cut Bash-hook (global). บีบ git ดี แต่ workload นี้ rtk-able แค่ ~0.8% (Read 62% ครอง).
 - **nah 0.9.1** — security guard PreToolUse (BLOCK curl|bash · ASK dual-use/rm-rf · ALLOW git_safe). dual-use→ASK ห้าม loosen.
 - **context-mode MCP** (project-scoped `.mcp.json`, ELv2 local-first) — ctx_* 11 tools, +7.9k tok/session repo นี้. routing nudge block ใน CLAUDE.md. **gate = folded (§D).**
-- **swe-probe** `bench/swe_probe/` — team-vs-solo measurement harness (committed `71a2815`).
+- **paw router + blackboard** — route decision and shared-state CLIs live; total test suite 23.
+- **swe-probe** `bench/swe_probe/` — frozen SymPy N=8 evidence; verifier runs without paid arms.
 - WSL Ubuntu + swebench + Docker Desktop (flask env-image cached, eval ~1-2min). `$env:DEEPSEEK_API_KEY` set. ccusage 20.0.14 · tiktoken 0.13.0 · iii.exe PATH.
 - **GateGuard hook** = ECC, fact-forcing บน Bash/Edit/Write (fires ทุก op session นี้). disable = `ECC_GATEGUARD=off`.
 
-## D. CURRENT WORK — swe-probe (existential: team ถูกกว่า solo จริงไหม)
+## D. HISTORICAL BENCH LOG — frozen; canonical truth is §0 + manifest
+
+> The log below records how the conclusion evolved. Do not resume its intermediate TODOs or append runs to this cohort.
 
 **คำถาม:** Claude-plan + DeepSeek-implement → hold resolution-rate vs Claude-solo ที่ quota ถูกกว่าไหม? (fork ③ gate)
 **design:** oracle retrieval · single-shot · 3 arm (claude-solo / team / deepseek-solo) · objective = swebench `resolved`. NOT agent-team framework — "team" = Claude ขับมือ + DeepSeek API.
@@ -75,9 +89,9 @@
 - hook-B booster = **rejected** — category Read 62%/Bash-other 17%/Web 12%/Grep 6%; hook บีบได้แค่ Bash ~17% < 30% gate; Read บีบ hook ไม่ได้ (read-to-edit verbatim). machinery ช่วยไม่ได้; ไม่มี portable hard-enforce (ชน #8).
 - **decision: fold เข้า swe-work** (Read/log/diff-heavy = ctx-mode best case). route ctx_ ด้วยมือ 3-5 swe session → replay+ccusage → **terminal keep/kill** (best-case fail=kill เด็ดขาด · clear=keep). tax 7.9k/session bleed = ราคาของ clean read.
 
-## E. cross-host verdict (harness ใช้ AI ตัวอื่น/DeepSeek ได้ไหม)
+## E. HISTORICAL cross-host verdict — superseded by §0
 
-**harness วันนี้ = CC-only. cross-host = GOAL ยังไม่จริง.**
+**Historical pre-router statement:** runtime enforcement was CC-first. Current truth: router/blackboard protocol is portable, while execution/enforcement remains tiered.
 | component | mechanism | portable | DeepSeek |
 |---|---|---|---|
 | ICM | CLI | ✅ any shell | ✅ ถ้า runtime shell ได้ |
@@ -90,6 +104,17 @@
 - **DECISION (user): bench-now-wire-later.** ไม่ port harness ก่อนรู้ team คุ้ม. ให้ DeepSeek กิน harness ต้อง MCP-capable runtime (Cline/Codex/custom loop) = build รอ economics ผ่าน.
 
 ## F. OPEN / NEXT (resume จากตรงนี้)
+
+**Current ordered next work:**
+
+1. Team Kernel v0: execute `RouteDecision` through Planner → Implementer → Reviewer → evaluator with bounded retries and explicit stop conditions.
+2. Use ICM blackboard for real plan/review/result handoffs; artifacts stay in files and memory stores references/summaries only.
+3. Lift Codex/DeepSeek adapter contracts from `swe_probe` without importing the frozen benchmark cohort into runtime code.
+4. Add Linux/macOS CI for router + blackboard; Windows is already live.
+5. Implement `paw link/verify/unlink` after the Team Kernel contract settles.
+6. Optional later benchmark work must use a new dated cohort.
+
+> Everything below in §F is a historical backlog retained for provenance; do not resume it over the ordered list above.
 
 1. ~~search/replace blocks~~ **DONE** (§D) — SR แทน whole-file, -77% output บนไฟล์ใหญ่, resolved hold. พร้อมขยาย N.
 2. **N=5-10 quality axis** — flask Lite หมด (เหลือ 4045 messy) → repo hermetic อื่น (pylint/sqlfluff/sympy/sphinx), gold-validate ก่อน. ดู team≥solo & team>deepseek-solo hold.
@@ -119,9 +144,10 @@
   ไม่ wrap/proxy default**. recheck = upstream Windows wheel + latency release.
 - **swebench:** `import resource` Unix-only → Windows native รันไม่ได้ → scorer ผ่าน WSL. py3.14 ไม่มี wheel `datasets`/`swebench` → puller ใช้ requests; scorer WSL pip.
 
-## H. salvage state (paw build, deferred — primary = swe-probe ตอนนี้)
+## H. implementation state
 
 - repo `E:\portable-harness` (git). port-a-whip เก่า `~/.claude/port-a-whip` = source สำหรับ salvage write-path (patcher/healthcheck/install/runner/state).
-- `paw sets list/show` ✓ (read-path lifted, 8 sets). write-path ยังไม่ port. `bundle/AGENTS.md` = canonical harness manual (link injection source).
+- `paw sets list/show` ✓ (8 sets) · `paw route` ✓ · `paw blackboard write/read` ✓. write-path `link/verify/unlink` ยังไม่ port.
+- router: 14 tests / 91.3% statement coverage. blackboard: real isolated ICM integration; full suite 23 tests.
 - G5 locked: salvage portaw subtree staged (patcher = comment-preserving TOML + `_guard_unchanged` race-safe, lift verbatim ตอน MCP-set แรก; thin-rewrite REJECTED). MVP `link secure-agent` (0-MCP) = agents_md+runner+install+healthcheck+state+router-wiring.
 - ติด `ECC adopt-all` (memory note 2026-06-24): ECC plugin = harness base, paw = residual overlay. ctx-mode compliance + prune/ROP/codex-migrate = pending ที่ note นั้น.

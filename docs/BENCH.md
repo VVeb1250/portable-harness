@@ -1,8 +1,28 @@
 # BENCH — runnable token-cut + memory benchmark
 
-> สถานะ: **plan, design-only** · 2026-06-21 · เจ้าของ: supimol.web@gmail.com
+> สถานะ: **mixed plan + measured evidence** · updated 2026-06-25 · เจ้าของ: supimol.web@gmail.com
 > จุดประสงค์: **ฆ่า vibes** — วัด NET ก่อน lock anchor. mindset #5 (anti-vibes/empirical).
 > คู่กับ: [STATUS.md](./STATUS.md) §C/§D · [ARCHITECTURE.md](./ARCHITECTURE.md) §6 ledger.
+
+---
+
+## Frozen agent-team evidence
+
+The SymPy N=8 `swe_probe` cohort is frozen. Canonical truth lives in:
+
+- `bench/swe_probe/FROZEN_N8_2026-06-25.json`
+- `bench/swe_probe/_report.txt`
+- `bench/swe_probe/results/*.json`
+- `bench/swe_probe/preds/*`
+
+Verify hashes and regenerate the report without paid model calls:
+
+```powershell
+python bench/swe_probe/verify_freeze.py
+```
+
+Result: `team3 5/8 > codex-solo 4/8 > claude-solo 2/6 ≈ deepseek-solo 2/8`.
+Do not append future runs to this cohort; create a new dated manifest.
 
 ---
 
