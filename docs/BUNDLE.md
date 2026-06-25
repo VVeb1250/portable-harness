@@ -74,10 +74,15 @@ triad ครบ: lexical (grep native) / **struct (ast-grep)** / graph (codegrap
 > ⚠️ **enforcement ไม่เท่ากันทุก host (smoke 2026-06-22, A-13):** shared brain (ICM memory + AGENTS.md) = portable จริง; แต่ **automatic guarantee (hook token-cut + nah hard-BLOCK) = Claude-only strong**, degrade → Gemini(medium) → Codex(instruction+sandbox, softer). **secure-agent บน Codex = `nah codex setup` (config approval-mode + `~/.codex/rules/nah-authority.rules` + sandbox) ไม่ใช่ hard-block** — โฆษณา guarantee ให้ตรง tier.
 
 ```powershell
-# install UX (target — reuse/port portaw installer):
-#   harness install secure-agent --host claude-code   # ลง+wire+verify ทีเดียว
-#   harness sets list                                  # ดู catalog
-# verify:
+# install UX (LANDED 2026-06-26 — slice-0 CLI + slice-1 MCP/JSON):
+#   py -m paw sets list                          # ดู catalog (14 sets)
+#   py -m paw plan  <set> --host claude-code     # preview (no mutation)
+#   py -m paw apply <set> --host claude-code     # wire (backup+ledger+drift-guard); vendored bin/→PATH
+#   py -m paw verify <set>                        # health: context/mcp/binary
+#   py -m paw remove <set>                        # reversible (paw-owned only)
+# ทุก 14 sets plan OK บน claude-code. MCP merge เข้า .mcp.json (CC)/.gemini/settings.json.
+# ⛔ slice-1b ค้าง: --host codex (TOML, ต้อง comment-preserving patcher).
+# verify (token):
 py bench/mcp_tax.py --all      # eager MCP เล็ก
 icm.exe recall "smoke" ; rtk gain
 ```

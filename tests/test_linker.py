@@ -4,13 +4,22 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import json
+import os
+
 from paw.linker import (
     apply_plan,
     build_plan,
+    ensure_bin_on_path,
     has_block,
+    install_command,
+    mcp_servers_for,
+    read_mcp_servers,
     remove,
+    resolve_binary,
     verify,
 )
+from paw.sets.loader import get_set
 
 
 class LinkerSliceZeroTests(unittest.TestCase):
@@ -36,8 +45,11 @@ class LinkerSliceZeroTests(unittest.TestCase):
         inject = next(a for a in plan.actions if a.kind == "inject-context-block")
         self.assertTrue(inject.requires_approval)
 
-    def test_plan_blocks_a_set_with_mcp_servers(self) -> None:
-        plan = build_plan("context-quality", context=str(self.ctx), root=self.root)
+    def test_plan_blocks_an_mcp_set_on_a_non_json_host(self) -> None:
+        # Codex uses TOML config (no comment-preserving patcher yet) -> blocked.
+        plan = build_plan(
+            "context-quality", host="codex", context=str(self.ctx), root=self.root
+        )
         self.assertEqual(plan.status, "blocked")
         self.assertTrue(any(w.startswith("BLOCK:") for w in plan.warnings))
 
@@ -84,7 +96,6 @@ class LinkerSliceZeroTests(unittest.TestCase):
 
     # --- remove -------------------------------------------------------------
     def test_remove_round_trips_to_original_content(self) -> None:
-        original = self.ctx.read_text(encoding="utf-8")
         apply_plan(self._plan(), root=self.root)
         result = remove("repo-pack", context=str(self.ctx), root=self.root)
         self.assertEqual(result.status, "ok")
@@ -102,6 +113,194 @@ class LinkerSliceZeroTests(unittest.TestCase):
         result = remove("repo-pack", context=str(self.ctx), root=self.root)
         self.assertEqual(result.status, "drifted")
         self.assertTrue(has_block(self.ctx.read_text(encoding="utf-8"), "repo-pack"))
+
+
+class BinaryResolutionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_resolve_binary_finds_vendored_when_off_path(self) -> None:
+        bindir = self.root / "bin"
+        bindir.mkdir()
+        (bindir / "code2prompt.exe").write_text("stub", encoding="utf-8")
+        location, source = resolve_binary("code2prompt", self.root)
+        self.assertEqual(source, "vendored")
+        self.assertTrue(location.endswith("code2prompt.exe"))
+
+    def test_resolve_binary_missing_when_absent_everywhere(self) -> None:
+        location, source = resolve_binary("definitely-not-a-real-binary", self.root)
+        self.assertIsNone(location)
+        self.assertEqual(source, "missing")
+
+    def test_vendored_binary_makes_plan_healthy(self) -> None:
+        bindir = self.root / "bin"
+        bindir.mkdir()
+        (bindir / "code2prompt.exe").write_text("stub", encoding="utf-8")
+        ctx = self.root / "CLAUDE.md"
+        ctx.write_text("# project\n", encoding="utf-8")
+        plan = build_plan("repo-pack", context=str(ctx), root=self.root)
+        detect = next(a for a in plan.actions if a.kind == "detect-binary")
+        self.assertIn("vendored", detect.summary)
+        self.assertFalse(
+            any("not on PATH" in w for w in plan.warnings),
+            "vendored binary should not raise a degraded warning",
+        )
+
+    def test_plan_surfaces_install_command_when_missing(self) -> None:
+        ctx = self.root / "CLAUDE.md"
+        ctx.write_text("# project\n", encoding="utf-8")
+        # api-quality ships hurl with a per-OS install recipe; not on PATH/bin here.
+        plan = build_plan("api-quality", context=str(ctx), root=self.root)
+        detect = next(a for a in plan.actions if a.kind == "detect-binary")
+        self.assertIn("install:", detect.summary)
+
+    def test_install_command_resolves_string_and_per_os_dict(self) -> None:
+        self.assertEqual(
+            install_command({"install": [{"cmd": "cargo install x"}]}),
+            "cargo install x",
+        )
+        per_os = {"install": [{"cmd": {"windows": "winget x", "linux": "cargo x", "macos": "brew x"}}]}
+        self.assertIsNotNone(install_command(per_os))
+        self.assertIsNone(install_command({"install": []}))
+
+
+class PathWiringTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.bindir = self.root / "bin"
+        self.bindir.mkdir()
+        (self.bindir / "code2prompt.exe").write_text("stub", encoding="utf-8")
+        self.ctx = self.root / "CLAUDE.md"
+        self.ctx.write_text("# project\n\nkeep me\n", encoding="utf-8")
+        self.env_file = self.root / ".claude" / "settings.local.json"
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _plan(self):
+        return build_plan(
+            "repo-pack", host="claude-code", context=str(self.ctx), root=self.root
+        )
+
+    def test_plan_includes_wire_path_when_binary_vendored(self) -> None:
+        kinds = {a.kind for a in self._plan().actions}
+        self.assertIn("wire-path", kinds)
+
+    def test_apply_prepends_bindir_and_preserves_other_keys(self) -> None:
+        self.env_file.parent.mkdir()
+        self.env_file.write_text(json.dumps({"model": "opus"}), encoding="utf-8")
+        result = apply_plan(self._plan(), root=self.root)
+        self.assertEqual(result.status, "ok")
+        data = json.loads(self.env_file.read_text(encoding="utf-8"))
+        self.assertEqual(data["model"], "opus")  # untouched
+        first = data["env"]["PATH"].split(os.pathsep)[0]
+        self.assertEqual(first, str(self.bindir.resolve()))
+
+    def test_ensure_bin_on_path_is_idempotent(self) -> None:
+        changed1, _ = ensure_bin_on_path(self.env_file, self.bindir)
+        changed2, _ = ensure_bin_on_path(self.env_file, self.bindir)
+        self.assertTrue(changed1)
+        self.assertFalse(changed2)
+        value = json.loads(self.env_file.read_text(encoding="utf-8"))["env"]["PATH"]
+        self.assertEqual(value.split(os.pathsep).count(str(self.bindir.resolve())), 1)
+
+    def test_remove_reverses_introduced_path_key(self) -> None:
+        apply_plan(self._plan(), root=self.root)
+        self.assertTrue(self.env_file.exists())
+        remove("repo-pack", host="claude-code", context=str(self.ctx), root=self.root)
+        # we introduced PATH (and the file) — it should be gone again
+        leftover = (
+            json.loads(self.env_file.read_text(encoding="utf-8")).get("env", {})
+            if self.env_file.exists()
+            else {}
+        )
+        self.assertNotIn("PATH", leftover)
+
+    def test_remove_restores_prior_path_owner(self) -> None:
+        self.env_file.parent.mkdir()
+        self.env_file.write_text(
+            json.dumps({"env": {"PATH": "/preexisting"}}), encoding="utf-8"
+        )
+        apply_plan(self._plan(), root=self.root)
+        remove("repo-pack", host="claude-code", context=str(self.ctx), root=self.root)
+        data = json.loads(self.env_file.read_text(encoding="utf-8"))
+        self.assertEqual(data["env"]["PATH"], "/preexisting")
+
+
+class McpWiringTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.mcp_file = self.root / ".mcp.json"
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _plan(self, name="context-quality"):
+        return build_plan(name, host="claude-code", root=self.root)
+
+    def test_host_anchor_picks_codegraph_on_claude_code(self) -> None:
+        servers = mcp_servers_for(get_set("efficiency-starter"), "claude-code")
+        self.assertIn("codegraph", servers)
+        self.assertNotIn("semble", servers)  # semble is the codex/gemini anchor
+
+    def test_host_anchor_picks_semble_on_gemini(self) -> None:
+        servers = mcp_servers_for(get_set("efficiency-starter"), "gemini")
+        self.assertIn("semble", servers)
+        self.assertNotIn("codegraph", servers)
+
+    def test_resolved_config_strips_annotation_keys(self) -> None:
+        servers = mcp_servers_for(get_set("efficiency-starter"), "claude-code")
+        self.assertFalse(any(k.startswith("_") for k in servers["codegraph"]))
+
+    def test_plan_for_mcp_set_on_json_host_is_ok_with_inject_mcp(self) -> None:
+        plan = self._plan()
+        self.assertEqual(plan.status, "ok")
+        self.assertIn("inject-mcp", {a.kind for a in plan.actions})
+
+    def test_apply_merges_servers_and_preserves_existing(self) -> None:
+        self.mcp_file.write_text(
+            json.dumps({"mcpServers": {"keep-me": {"command": "x"}}}), encoding="utf-8"
+        )
+        result = apply_plan(self._plan(), root=self.root)
+        self.assertEqual(result.status, "ok")
+        servers = read_mcp_servers(self.mcp_file)
+        self.assertIn("keep-me", servers)   # untouched
+        self.assertIn("context7", servers)  # merged in
+
+    def test_apply_is_idempotent_for_mcp(self) -> None:
+        apply_plan(self._plan(), root=self.root)
+        apply_plan(self._plan(), root=self.root)
+        servers = read_mcp_servers(self.mcp_file)
+        self.assertEqual(list(servers).count("context7"), 1)
+
+    def test_verify_reports_mcp_health(self) -> None:
+        self.assertEqual(verify("context-quality", root=self.root).health, "blocked")
+        apply_plan(self._plan(), root=self.root)
+        linked = verify("context-quality", root=self.root)
+        self.assertIn(linked.health, ("healthy", "degraded"))
+
+    def test_remove_strips_only_paw_servers_and_keeps_others(self) -> None:
+        self.mcp_file.write_text(
+            json.dumps({"mcpServers": {"keep-me": {"command": "x"}}}), encoding="utf-8"
+        )
+        apply_plan(self._plan(), root=self.root)
+        remove("context-quality", host="claude-code", root=self.root)
+        servers = read_mcp_servers(self.mcp_file)
+        self.assertIn("keep-me", servers)
+        self.assertNotIn("context7", servers)
+
+    def test_n1_ceiling_warns_when_too_many_servers(self) -> None:
+        self.mcp_file.write_text(
+            json.dumps({"mcpServers": {"a": {}, "b": {}, "c": {}}}), encoding="utf-8"
+        )
+        plan = self._plan()  # adds context7 -> 4 total > ceiling 3
+        self.assertTrue(any(w.startswith("N1:") for w in plan.warnings))
 
 
 if __name__ == "__main__":

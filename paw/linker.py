@@ -1,10 +1,14 @@
-"""Bundle linker — slice-0 write-path: plan -> apply -> verify -> remove.
+"""Bundle linker — write-path: plan -> apply -> verify -> remove.
 
-The thinnest honest transaction that wires a curated set into one host's
-context file and can fully reverse itself. Scoped to CLI-only sets (no MCP,
-no hooks) so it exercises the whole spine — discovery, preview, guarded apply,
-ownership ledger, verification, reversible remove — without the TOML/MCP merge
-path. repo-pack is the reference set.
+The thinnest honest transaction that wires a curated set into one host and
+fully reverses itself. Three independent, reversible mutations:
+  - context block  → host context file (CLAUDE.md / AGENTS.md / GEMINI.md)
+  - MCP servers     → project-local JSON config (.mcp.json / .gemini/settings.json)
+  - PATH wiring     → machine-local settings so vendored bin/ tools run by name
+
+slice-0 = CLI-only sets (context + binary detection). slice-1 = MCP merge for
+JSON-config hosts (claude-code, gemini). Codex TOML merge (comment-preserving)
+is the remaining slice-1b gap; MCP sets BLOCK on --host codex with a clear note.
 
 Design invariants honored (docs/PAW-CLI-WORKFLOW-DRAFT.md §21):
   preview before mutation · no silent clobber (managed marker block only) ·
@@ -17,8 +21,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
-from dataclasses import asdict, dataclass, field
+import sys
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from shutil import which
@@ -41,6 +47,235 @@ HOST_CONTEXT = {
 }
 
 ABSENT = "absent"  # fingerprint sentinel for a non-existent target
+
+# Map sys.platform -> the per-OS key registry install entries use.
+_OS_KEY = {"win32": "windows", "darwin": "macos"}
+
+
+# --------------------------------------------------------------------------- #
+# binary resolution + install hints
+# --------------------------------------------------------------------------- #
+def vendored_bin_dir(root: Path) -> Path:
+    """Repo-local prebuilt binaries the bundle ships (portable, off-PATH)."""
+    return root / "bin"
+
+
+def resolve_binary(binary: str, root: Path) -> tuple[str | None, str]:
+    """Find a tool binary, preferring PATH then the vendored bin/ dir.
+
+    Returns (location, source) where source is one of "path", "vendored",
+    or "missing". location is the resolved path (for vendored) or the binary
+    name (for PATH) so callers can report where it came from.
+    """
+    on_path = which(binary)
+    if on_path:
+        return on_path, "path"
+    bindir = vendored_bin_dir(root)
+    for candidate in (bindir / binary, bindir / f"{binary}.exe"):
+        if candidate.exists():
+            return str(candidate), "vendored"
+    return None, "missing"
+
+
+def _os_key() -> str:
+    return _OS_KEY.get(sys.platform, "linux")
+
+
+# Hosts whose machine-local settings file injects env into the subprocesses
+# they spawn (Bash tool / shell). Only these can safely get a PATH prepend.
+HOST_ENV_FILE = {
+    "claude-code": (".claude", "settings.local.json"),
+}
+
+
+def host_env_file(host: str, root: Path) -> Path | None:
+    """The host's machine-local, git-ignored settings file, or None."""
+    rel = HOST_ENV_FILE.get(host)
+    return root.joinpath(*rel) if rel else None
+
+
+def _path_entries(value: str) -> list[str]:
+    return [p for p in value.split(os.pathsep) if p]
+
+
+def ensure_bin_on_path(env_file: Path, bindir: Path) -> tuple[bool, str | None]:
+    """Idempotently prepend the vendored bin dir to env.PATH in a host JSON.
+
+    Claude Code's `env` block is applied literally (no ${PATH} expansion), so
+    the value must carry a full PATH. We snapshot the live PATH once, prepend
+    the abs bin dir, and write it to the *machine-local* (git-ignored) settings
+    so the committed repo stays portable. Returns (changed, previous_value);
+    previous_value is None when we introduced the key (used to fully reverse).
+    """
+    data: dict = {}
+    if env_file.exists():
+        data = json.loads(env_file.read_text(encoding="utf-8") or "{}")
+    env = data.setdefault("env", {})
+    prev = env.get("PATH")
+    current = prev if prev is not None else os.environ.get("PATH", "")
+    absbin = str(bindir.resolve())
+    entries = _path_entries(current)
+    if entries[:1] == [absbin]:
+        return False, prev  # already at front — idempotent
+    env["PATH"] = os.pathsep.join([absbin, *[e for e in entries if e != absbin]])
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return True, prev
+
+
+def remove_bin_from_path(env_file: Path, bindir: Path, prev: str | None) -> bool:
+    """Reverse ensure_bin_on_path: restore prev value, or drop the key/file."""
+    if not env_file.exists():
+        return False
+    data = json.loads(env_file.read_text(encoding="utf-8") or "{}")
+    env = data.get("env", {})
+    if "PATH" not in env:
+        return False
+    if prev is not None:
+        env["PATH"] = prev  # someone owned PATH before us — restore it
+    else:
+        env.pop("PATH", None)  # we introduced it — remove cleanly
+    if not env:
+        data.pop("env", None)
+    if data:
+        env_file.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    else:
+        env_file.unlink()
+    return True
+
+
+# --------------------------------------------------------------------------- #
+# MCP wiring (slice-1) — JSON-config hosts only; Codex TOML deferred
+# --------------------------------------------------------------------------- #
+# Project-local MCP config file per host. JSON `mcpServers` map shape.
+HOST_MCP_FILE = {
+    "claude-code": (".mcp.json",),
+    "gemini": (".gemini", "settings.json"),
+}
+
+# Registry per-host config blocks key on these host ids (not "claude-code").
+_HOST_REGISTRY_KEY = {
+    "claude-code": "claude",
+    "codex": "codex",
+    "gemini": "gemini",
+    "cursor": "cursor",
+}
+
+N1_CEILING = 3  # max active MCP servers per host before review
+
+
+def host_mcp_file(host: str, root: Path) -> Path | None:
+    """The host's project-local JSON MCP config file, or None if unsupported."""
+    rel = HOST_MCP_FILE.get(host)
+    return root.joinpath(*rel) if rel else None
+
+
+def _clean_cfg(cfg: dict) -> dict:
+    """Drop registry annotation keys (_target/_note/...) from a config block."""
+    return {k: v for k, v in cfg.items() if not k.startswith("_")}
+
+
+def _host_anchors(entry: dict) -> list[str] | None:
+    anchor = entry.get("host_anchor")
+    if anchor is None:
+        return None
+    return [anchor] if isinstance(anchor, str) else list(anchor)
+
+
+def mcp_servers_for(item: CuratedSet, host: str) -> dict[str, dict]:
+    """Resolve {server_name: config} for one host, honoring host_anchor.
+
+    A tool whose host_anchor excludes this host is skipped (codegraph XOR
+    semble). Per-host config block wins over the canonical mcp_config.
+    """
+    hostkey = _HOST_REGISTRY_KEY.get(host, host)
+    out: dict[str, dict] = {}
+    for entry in item.mcp:
+        anchors = _host_anchors(entry)
+        if anchors is not None and host not in anchors and hostkey not in anchors:
+            continue
+        per = entry.get("mcp_config_per_host", {})
+        cfg = per.get(hostkey) or entry.get("mcp_config", {})
+        out[entry["tool"]] = _clean_cfg(cfg)
+    return out
+
+
+def _read_mcp_doc(mcp_file: Path) -> dict:
+    if not mcp_file.exists():
+        return {}
+    return json.loads(mcp_file.read_text(encoding="utf-8") or "{}")
+
+
+def read_mcp_servers(mcp_file: Path) -> dict[str, dict]:
+    return _read_mcp_doc(mcp_file).get("mcpServers", {})
+
+
+def merge_mcp_servers(
+    mcp_file: Path, servers: dict[str, dict]
+) -> tuple[tuple[str, ...], dict[str, dict | None]]:
+    """Merge servers into the host JSON; return (added_names, prior_values).
+
+    prior_values maps each touched server -> its previous config (None if we
+    introduced it) so remove can restore or delete precisely.
+    """
+    doc = _read_mcp_doc(mcp_file)
+    registry = doc.setdefault("mcpServers", {})
+    prior: dict[str, dict | None] = {}
+    added: list[str] = []
+    for name, cfg in servers.items():
+        if registry.get(name) == cfg:
+            continue  # idempotent — already exactly this
+        prior[name] = registry.get(name)
+        registry[name] = cfg
+        added.append(name)
+    if added:
+        mcp_file.parent.mkdir(parents=True, exist_ok=True)
+        mcp_file.write_text(
+            json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    return tuple(added), prior
+
+
+def remove_mcp_servers(mcp_file: Path, prior: dict[str, dict | None]) -> tuple[str, ...]:
+    """Reverse merge_mcp_servers: restore prior config or drop the key/file."""
+    if not mcp_file.exists():
+        return ()
+    doc = _read_mcp_doc(mcp_file)
+    registry = doc.get("mcpServers", {})
+    removed: list[str] = []
+    for name, prev in prior.items():
+        if prev is None:
+            if registry.pop(name, None) is not None:
+                removed.append(name)
+        else:
+            registry[name] = prev
+            removed.append(name)
+    if not registry:
+        doc.pop("mcpServers", None)
+    if doc:
+        mcp_file.write_text(
+            json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    else:
+        mcp_file.unlink()
+    return tuple(removed)
+
+
+def install_command(tool: dict) -> str | None:
+    """The install command for this host's OS, or None if the tool ships none.
+
+    Registry `install[].cmd` is either a plain string (any OS) or a per-OS
+    dict keyed windows/macos/linux. Pick the first install step that resolves.
+    """
+    for step in tool.get("install", ()):
+        cmd = step.get("cmd")
+        if isinstance(cmd, str):
+            return cmd
+        if isinstance(cmd, dict):
+            resolved = cmd.get(_os_key())
+            if resolved:
+                return resolved
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -80,6 +315,9 @@ def render_block(item: CuratedSet) -> str:
         lines.append(f"- **{tool['tool']}** (`{binary}`): {tool.get('purpose', '').strip()}")
         if tool.get("usage_hint"):
             lines.append(f"  - usage: `{tool['usage_hint']}`")
+        hint = install_command(tool)
+        if hint:
+            lines.append(f"  - install: `{hint}`")
     lines.append(end)
     return "\n".join(lines)
 
@@ -108,7 +346,13 @@ def strip_block(text: str, set_name: str) -> str:
 @dataclass(frozen=True)
 class Action:
     id: str
-    kind: Literal["detect-binary", "inject-context-block", "strip-context-block"]
+    kind: Literal[
+        "detect-binary",
+        "inject-context-block",
+        "strip-context-block",
+        "wire-path",
+        "inject-mcp",
+    ]
     target: str
     summary: str
     reversible: bool
@@ -154,7 +398,16 @@ def _resolve_context(host: str, context: str | None, root: Path) -> Path:
 
 
 class LinkerError(RuntimeError):
-    """unknown set/host or an unsupported set shape for slice-0."""
+    """unknown set/host or an unsupported set shape."""
+
+
+def _set_has_vendored_binary(item: CuratedSet, root: Path) -> bool:
+    """True if any tool in the set resolves to a binary in the vendored bin/."""
+    for tool in item.non_mcp:
+        binary = tool.get("health_binary")
+        if binary and resolve_binary(binary, root)[1] == "vendored":
+            return True
+    return False
 
 
 def build_plan(
@@ -171,33 +424,85 @@ def build_plan(
     ctx = _resolve_context(host, context, root)
     warnings: list[str] = []
 
+    # MCP wiring (slice-1): JSON hosts get merged; non-JSON (Codex TOML) blocks.
+    mcp_servers: dict[str, dict] = {}
+    mcp_file: Path | None = None
     if item.mcp:
-        warnings.append(
-            f"BLOCK: {set_name} has {len(item.mcp)} MCP server(s); MCP wiring is "
-            "not in slice-0 (CLI-only sets). Use a later linker increment."
-        )
+        mcp_file = host_mcp_file(host, root)
+        if mcp_file is None:
+            warnings.append(
+                f"BLOCK: {set_name} has MCP server(s); host '{host}' uses a non-JSON "
+                "MCP config (e.g. Codex TOML), not supported in slice-1. Use "
+                "claude-code or gemini, or wait for the comment-preserving TOML patcher."
+            )
+        else:
+            mcp_servers = mcp_servers_for(item, host)
+            if not mcp_servers:
+                warnings.append(
+                    f"{set_name}: no MCP server applies to {host} (host_anchor mismatch)"
+                )
+
     if host not in {h for t in item.non_mcp for h in t.get("host_support", [])} and item.non_mcp:
         warnings.append(f"host {host} is not listed in host_support for some tools")
 
     actions: list[Action] = []
-    for tool in item.non_mcp:
+    # Detect health binaries for CLI tools + only the MCP tools wired on this
+    # host (skip the XOR alternative, e.g. semble when codegraph is the anchor).
+    mcp_to_detect = [t for t in item.mcp if t["tool"] in mcp_servers]
+    for tool in (*item.non_mcp, *mcp_to_detect):
         binary = tool.get("health_binary")
         if binary:
-            present = which(binary) is not None
+            location, source = resolve_binary(binary, root)
+            if source == "path":
+                detail = "found on PATH"
+            elif source == "vendored":
+                rel = Path(location).relative_to(root)
+                detail = f"found in vendored {rel.as_posix()}"
+            else:
+                hint = install_command(tool)
+                detail = f"MISSING — install: {hint}" if hint else "MISSING — no install recipe"
             actions.append(
                 Action(
                     id=f"detect:{binary}",
                     kind="detect-binary",
                     target=binary,
-                    summary=f"{binary} {'found on PATH' if present else 'MISSING — install before use'}",
+                    summary=f"{binary} {detail}",
                     reversible=True,
                     requires_approval=False,
                 )
             )
-            if not present:
-                warnings.append(f"{binary} not on PATH; capability degraded until installed")
+            if source == "missing":
+                hint = install_command(tool)
+                tail = f" → {hint}" if hint else ""
+                warnings.append(
+                    f"{binary} not on PATH or vendored bin/; capability degraded until installed{tail}"
+                )
 
-    if item.non_mcp and not any(w.startswith("BLOCK:") for w in warnings):
+    blocked = any(w.startswith("BLOCK:") for w in warnings)
+
+    if mcp_servers and mcp_file is not None and not blocked:
+        union = set(read_mcp_servers(mcp_file)) | set(mcp_servers)
+        if len(union) > N1_CEILING:
+            warnings.append(
+                f"N1: {len(union)} active MCP servers on {host} after wiring "
+                f"(ceiling {N1_CEILING}) — review token tax before applying"
+            )
+        actions.append(
+            Action(
+                id=f"mcp:{item.name}",
+                kind="inject-mcp",
+                target=str(mcp_file),
+                summary=(
+                    f"merge {len(mcp_servers)} MCP server(s) "
+                    f"[{', '.join(sorted(mcp_servers))}] into {mcp_file.name}"
+                ),
+                reversible=True,
+                requires_approval=True,
+                before_fingerprint=fingerprint(mcp_file),
+            )
+        )
+
+    if item.non_mcp and not blocked:
         actions.append(
             Action(
                 id=f"context:{item.name}",
@@ -209,6 +514,23 @@ def build_plan(
                 before_fingerprint=fingerprint(ctx),
             )
         )
+        env_file = host_env_file(host, root)
+        if env_file is not None and _set_has_vendored_binary(item, root):
+            bindir = vendored_bin_dir(root)
+            actions.append(
+                Action(
+                    id=f"path:{item.name}",
+                    kind="wire-path",
+                    target=str(env_file),
+                    summary=(
+                        f"prepend {bindir.name}/ to PATH in {env_file.name} "
+                        "(machine-local, reversible) so vendored tools run by bare name"
+                    ),
+                    reversible=True,
+                    requires_approval=True,
+                    before_fingerprint=fingerprint(env_file),
+                )
+            )
     return ChangePlan(
         intent="add-set",
         set_name=set_name,
@@ -270,52 +592,100 @@ def _backup(path: Path) -> str | None:
 
 
 def apply_plan(plan: ChangePlan, *, root: Path | None = None) -> TxResult:
-    """Execute a plan with a drift guard + backup; commit ownership on success."""
+    """Execute a plan with per-file drift guards + backups; commit ownership.
+
+    Handles three independent mutations — context block, MCP server merge, and
+    PATH wiring — so a set may be CLI-only, MCP-only, or both.
+    """
     root = root or Path.cwd()
     if plan.status == "blocked":
         return TxResult("blocked", plan.summary, next_actions=("resolve plan warnings",))
 
-    ctx = Path(plan.context_path)
     inject = next((a for a in plan.actions if a.kind == "inject-context-block"), None)
-    if inject is None:
-        return TxResult("ok", "nothing to wire (no CLI context action)", health="absent")
+    mcp_action = next((a for a in plan.actions if a.kind == "inject-mcp"), None)
+    wire = next((a for a in plan.actions if a.kind == "wire-path"), None)
+    if inject is None and mcp_action is None:
+        return TxResult("ok", "nothing to wire (no context or MCP action)", health="absent")
 
-    # drift guard: the file must be exactly what the plan was built against.
-    if fingerprint(ctx) != (inject.before_fingerprint or ABSENT):
-        return TxResult(
-            "drifted",
-            f"{ctx.name} changed since the plan was built; refusing to write",
-            next_actions=("regenerate the plan", "inspect the context diff"),
-        )
+    # drift guard each target up front — refuse the whole tx if any drifted.
+    for action in (inject, mcp_action):
+        if action is not None and fingerprint(Path(action.target)) != (
+            action.before_fingerprint or ABSENT
+        ):
+            name = Path(action.target).name
+            return TxResult(
+                "drifted",
+                f"{name} changed since the plan was built; refusing to write",
+                next_actions=("regenerate the plan", f"inspect the {name} diff"),
+            )
 
     item = get_set(plan.set_name)
-    backup = _backup(ctx)
-    before = ctx.read_text(encoding="utf-8") if ctx.exists() else ""
-    after = inject_block(before, item)
-    ctx.parent.mkdir(parents=True, exist_ok=True)
-    ctx.write_text(after, encoding="utf-8")
-
-    data = _load_ledger(root)
-    data["sets"][plan.set_name] = {
+    record: dict = {
         "host": plan.host,
         "scope": plan.scope,
-        "context_path": str(ctx),
-        "block_owner": "paw-injected",
-        "before_fingerprint": inject.before_fingerprint,
-        "after_fingerprint": fingerprint(ctx),
-        "backup": backup,
         "applied_at": _now(),
         "paw_version": PAW_VERSION,
     }
+    wired: list[str] = []
+    primary_backup: str | None = None
+
+    if inject is not None:
+        ctx = Path(inject.target)
+        backup = _backup(ctx)
+        primary_backup = backup
+        before = ctx.read_text(encoding="utf-8") if ctx.exists() else ""
+        ctx.parent.mkdir(parents=True, exist_ok=True)
+        ctx.write_text(inject_block(before, item), encoding="utf-8")
+        record.update(
+            context_path=str(ctx),
+            block_owner="paw-injected",
+            before_fingerprint=inject.before_fingerprint,
+            after_fingerprint=fingerprint(ctx),
+            backup=backup,
+        )
+        wired.append(f"context:{ctx.name}")
+
+    if mcp_action is not None:
+        mcp_file = Path(mcp_action.target)
+        mcp_backup = _backup(mcp_file)
+        servers = mcp_servers_for(item, plan.host)
+        added, prior = merge_mcp_servers(mcp_file, servers)
+        record["mcp_wiring"] = {
+            "mcp_file": str(mcp_file),
+            "servers": list(servers),
+            "prior": prior,
+            "backup": mcp_backup,
+        }
+        if primary_backup is None:
+            primary_backup = mcp_backup
+        if added:
+            wired.append(f"mcp:{', '.join(added)}")
+
+    path_wired = False
+    if wire is not None:
+        env_file = Path(wire.target)
+        path_backup = _backup(env_file)
+        changed, prev = ensure_bin_on_path(env_file, vendored_bin_dir(root))
+        path_wired = changed
+        record["path_wiring"] = {
+            "env_file": str(env_file),
+            "previous_path": prev,
+            "introduced": prev is None,
+            "backup": path_backup,
+        }
+
+    data = _load_ledger(root)
+    data["sets"][plan.set_name] = record
     _save_ledger(root, data)
 
-    applied = tuple(a.id for a in plan.actions)
+    note = " (PATH wired)" if path_wired else ""
+    detail = ", ".join(wired) or "no-op"
     return TxResult(
         "ok",
-        f"linked {plan.set_name} into {ctx.name}",
-        actions_applied=applied,
+        f"linked {plan.set_name} → {detail}{note}",
+        actions_applied=tuple(a.id for a in plan.actions),
         health="healthy" if all("MISSING" not in a.summary for a in plan.actions) else "degraded",
-        backup=backup,
+        backup=primary_backup,
         next_actions=(f"paw verify {plan.set_name}",),
     )
 
@@ -327,35 +697,65 @@ def verify(
     context: str | None = None,
     root: Path | None = None,
 ) -> TxResult:
-    """Layered check: ownership ledger -> block present -> drift -> binary."""
+    """Layered check across context block, MCP servers, drift, and binaries."""
     root = root or Path.cwd()
     item = get_set(set_name)
-    ctx = _resolve_context(host, context, root)
     checks: list[str] = []
-
     record = _load_ledger(root)["sets"].get(set_name)
-    text = ctx.read_text(encoding="utf-8") if ctx.exists() else ""
+    linked = drifted = degraded = False
 
-    if not has_block(text, set_name):
-        checks.append(f"context block: ABSENT in {ctx.name}")
+    if item.non_mcp:
+        ctx = _resolve_context(host, context, root)
+        text = ctx.read_text(encoding="utf-8") if ctx.exists() else ""
+        if has_block(text, set_name):
+            linked = True
+            checks.append(f"context block: present in {ctx.name}")
+            if record and fingerprint(ctx) != record.get("after_fingerprint"):
+                checks.append("fingerprint: DRIFTED since apply (file edited outside paw)")
+                drifted = True
+            else:
+                checks.append(
+                    "fingerprint: matches ledger" if record else "fingerprint: no ledger record"
+                )
+        else:
+            checks.append(f"context block: ABSENT in {ctx.name}")
+
+    if item.mcp:
+        mcp_file = host_mcp_file(host, root)
+        if mcp_file is None:
+            checks.append(f"mcp: host {host} not supported (slice-1 JSON config only)")
+        else:
+            present = read_mcp_servers(mcp_file)
+            want = mcp_servers_for(item, host)
+            have = [n for n in want if n in present]
+            missing = [n for n in want if n not in present]
+            if have:
+                linked = True
+                checks.append(f"mcp servers: present {', '.join(have)} in {mcp_file.name}")
+            if missing:
+                checks.append(f"mcp servers: MISSING {', '.join(missing)}")
+                degraded = True
+
+    if not linked:
         return TxResult("ok", f"{set_name} not linked", health="blocked", checks=tuple(checks))
-    checks.append(f"context block: present in {ctx.name}")
 
-    if record and fingerprint(ctx) != record.get("after_fingerprint"):
-        checks.append("fingerprint: DRIFTED since apply (file edited outside paw)")
-        health: Health = "drifted"
-    else:
-        checks.append("fingerprint: matches ledger" if record else "fingerprint: no ledger record")
-        health = "healthy"
-
-    for tool in item.non_mcp:
+    for tool in (*item.non_mcp, *item.mcp):
         binary = tool.get("health_binary")
         if binary:
-            ok = which(binary) is not None
-            checks.append(f"binary {binary}: {'on PATH' if ok else 'MISSING'}")
-            if not ok and health == "healthy":
-                health = "degraded"
+            location, source = resolve_binary(binary, root)
+            if source == "path":
+                checks.append(f"binary {binary}: on PATH")
+            elif source == "vendored":
+                rel = Path(location).relative_to(root)
+                checks.append(f"binary {binary}: vendored {rel.as_posix()}")
+            else:
+                hint = install_command(tool)
+                checks.append(
+                    f"binary {binary}: MISSING ({hint})" if hint else f"binary {binary}: MISSING"
+                )
+                degraded = True
 
+    health: Health = "drifted" if drifted else "degraded" if degraded else "healthy"
     return TxResult(
         "ok" if health != "drifted" else "drifted",
         f"{set_name}: {health}",
@@ -371,34 +771,58 @@ def remove(
     context: str | None = None,
     root: Path | None = None,
 ) -> TxResult:
-    """Strip only the paw-owned block; refuse on drift over user edits."""
+    """Reverse paw-owned wiring (context block, MCP servers, PATH); drift-safe."""
     root = root or Path.cwd()
+    item = get_set(set_name)
     ctx = _resolve_context(host, context, root)
     data = _load_ledger(root)
     record = data["sets"].get(set_name)
 
-    if not ctx.exists() or not has_block(ctx.read_text(encoding="utf-8"), set_name):
+    has_ctx_block = bool(
+        item.non_mcp and ctx.exists() and has_block(ctx.read_text(encoding="utf-8"), set_name)
+    )
+    mcp_wiring = (record or {}).get("mcp_wiring")
+    path_wiring = (record or {}).get("path_wiring")
+
+    if not has_ctx_block and not mcp_wiring and not path_wiring:
         data["sets"].pop(set_name, None)
         _save_ledger(root, data)
         return TxResult("ok", f"{set_name} already unlinked", health="blocked")
 
-    # drift guard: do not strip if the file changed since paw wrote it.
-    if record and fingerprint(ctx) != record.get("after_fingerprint"):
-        return TxResult(
-            "drifted",
-            f"{ctx.name} changed since paw wrote it; refusing to auto-remove",
-            next_actions=("inspect the diff", "remove the paw block manually"),
-        )
+    applied: list[str] = []
+    backup: str | None = None
 
-    backup = _backup(ctx)
-    text = ctx.read_text(encoding="utf-8")
-    ctx.write_text(strip_block(text, set_name), encoding="utf-8")
+    if has_ctx_block:
+        # drift guard: do not strip if the file changed since paw wrote it.
+        if record and fingerprint(ctx) != record.get("after_fingerprint"):
+            return TxResult(
+                "drifted",
+                f"{ctx.name} changed since paw wrote it; refusing to auto-remove",
+                next_actions=("inspect the diff", "remove the paw block manually"),
+            )
+        backup = _backup(ctx)
+        ctx.write_text(strip_block(ctx.read_text(encoding="utf-8"), set_name), encoding="utf-8")
+        applied.append(f"strip:{set_name}")
+
+    if mcp_wiring:
+        removed = remove_mcp_servers(
+            Path(mcp_wiring["mcp_file"]), mcp_wiring.get("prior", {})
+        )
+        if removed:
+            applied.append(f"unwire-mcp:{', '.join(removed)}")
+
+    if path_wiring:
+        if remove_bin_from_path(
+            Path(path_wiring["env_file"]), vendored_bin_dir(root), path_wiring.get("previous_path")
+        ):
+            applied.append(f"unwire-path:{set_name}")
+
     data["sets"].pop(set_name, None)
     _save_ledger(root, data)
     return TxResult(
         "ok",
-        f"unlinked {set_name} from {ctx.name}",
-        actions_applied=(f"strip:{set_name}",),
+        f"unlinked {set_name}",
+        actions_applied=tuple(applied),
         health="blocked",
         backup=backup,
     )
