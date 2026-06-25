@@ -31,3 +31,5 @@ bench/.venv-*/
 
 # fetched-per-host tool binaries — CI/install UX downloads from upstream releases
 bin/
+# bench-local vendored CLI binaries (downloaded from upstream releases, regenerable)
+bench/_bin/

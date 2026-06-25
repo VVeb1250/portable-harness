@@ -26,8 +26,8 @@ class CatalogCompositionTests(unittest.TestCase):
             "context-workbench": ("conditional", {"context-mode"}),
             "repo-pack": ("ready", {"code2prompt"}),
             "test-affected": ("conditional", {"pytest-testmon"}),
-            "quality-gate": ("candidate", {"prek", "actionlint", "lychee"}),
-            "api-quality": ("candidate", {"hurl"}),
+            "quality-gate": ("ready", {"prek", "actionlint", "lychee"}),
+            "api-quality": ("ready", {"hurl"}),
         }
 
         for name, (status, tools) in expected.items():

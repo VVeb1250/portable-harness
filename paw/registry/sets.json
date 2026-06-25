@@ -1745,7 +1745,7 @@
     },
     {
       "set_name": "quality-gate",
-      "catalog_status": "candidate",
+      "catalog_status": "ready",
       "description": "Portable deterministic preflight gates that catch repository, CI, and documentation defects before an agent spends another reasoning or CI loop on them.",
       "trigger_terms": [
         "pre commit",
@@ -1758,9 +1758,9 @@
       ],
       "decision": {
         "portable": true,
-        "token": "Indirect but credible: fail fast with bounded diagnostics instead of shipping changes into long CI logs and repeated repair loops.",
+        "token": "Bounded, structured diagnostics measured (bench/_quality_gate_output.py, this box): actionlint flags a broken workflow in 49 tok and lychee names a dead link in 76 tok, both file:line-locatable and <200 tok. Fails fast locally instead of surfacing as a long CI log + repair loop (avoided-CI-log upside not separately measured).",
         "quality": "Strong deterministic checks for hook orchestration, GitHub Actions semantics/security, and documentation links.",
-        "verdict": "CANDIDATE. Add to installer only after pinned cross-OS smoke tests and a compact-output probe."
+        "verdict": "READY. Cross-OS smoke green (4-OS) + compact-output probe passed; promoted from candidate 2026-06-26."
       },
       "token_profile": {
         "method": "No saving claimed yet. Measure avoided CI/log tokens and diagnostic size after cross-OS smoke tests.",
@@ -1879,13 +1879,13 @@
       "compat_notes": "These tools compose rather than overlap: prek schedules repository hooks, actionlint validates Actions workflows, and lychee validates links. Keep language-specific linters in project dependencies instead of making paw install one universal linter.",
       "verified": {
         "date": "2026-06-25",
-        "status": "Primary-source deep-vet passed for portability, maintenance, license, and deterministic value. Cross-OS smoke wired (.github/workflows/bundle-smoke.yml: prek v0.4.5 + actionlint v1.7.12 + lychee v0.24.2 prebuilt download->version->behavioral probe on linux-x64/macos-x64/macos-arm64/windows-x64). 4-OS matrix GREEN in CI (run 28181495807, 2026-06-26): linux-x64 + macos-x64 + macos-arm64 + windows-x64 all pass (download->extract->version->probe; actionlint flagged a broken workflow, lychee resolved an offline link on every OS). Cross-OS gate PASSED; remaining gate before candidate->ready = a compact-output/diagnostic-size benchmark.",
+        "status": "Primary-source deep-vet passed for portability, maintenance, license, and deterministic value. Cross-OS smoke wired (.github/workflows/bundle-smoke.yml: prek v0.4.5 + actionlint v1.7.12 + lychee v0.24.2 prebuilt download->version->behavioral probe on linux-x64/macos-x64/macos-arm64/windows-x64). 4-OS matrix GREEN in CI (run 28181495807, 2026-06-26): linux-x64 + macos-x64 + macos-arm64 + windows-x64 all pass (download->extract->version->probe; actionlint flagged a broken workflow, lychee resolved an offline link on every OS). Cross-OS gate PASSED. Compact-output probe PASSED (bench/_quality_gate_output.py 2026-06-26: actionlint 49 tok, lychee 76 tok, both bounded + file:line structured). Both promotion gates met -> catalog_status promoted candidate->ready.",
         "hosts": []
       }
     },
     {
       "set_name": "api-quality",
-      "catalog_status": "candidate",
+      "catalog_status": "ready",
       "description": "Language-agnostic HTTP/API contract tests expressed as reviewable text, with compact test output and CI reports instead of ad-hoc curl sessions and large response dumps.",
       "trigger_terms": [
         "api test",
@@ -1898,9 +1898,9 @@
       ],
       "decision": {
         "portable": true,
-        "token": "Test mode suppresses successful response bodies and emits a compact summary; failures can opt into long evidence.",
+        "token": "Fixture A/B measured (bench/_api_quality_hurl_ab.py, this box, local mock API): `hurl --test` success summary 76 tok vs raw response dump 170 tok = 55% cut on a small body (grows with response size); a failed assertion stays bounded at 132 tok (expected/actual only, no full body). Test mode suppresses successful bodies; only failures opt into evidence.",
         "quality": "High: deterministic chained requests, captures, JSONPath/XPath assertions, status/header/body checks, and CI reports.",
-        "verdict": "CANDIDATE. Strong category fit; promote after Windows/Linux/macOS binary smoke and a fixture-based output comparison."
+        "verdict": "READY. Cross-OS smoke green (4-OS) + fixture compact-output comparison passed; promoted from candidate 2026-06-26."
       },
       "token_profile": {
         "method": "Compare curl/raw response workflow against `hurl --test` summary and failure evidence on the same API fixture.",
@@ -1964,7 +1964,7 @@
       "compat_notes": "Complements browser-automation: Hurl verifies HTTP contracts without a browser; browser-harness remains for JS-rendered interaction and visual/user flows. Complements secure-agent by keeping credentials in variables/environment instead of committed test files.",
       "verified": {
         "date": "2026-06-25",
-        "status": "Primary-source deep-vet passed. Hurl is mature, cross-platform, single-binary, and CI-oriented. Cross-OS smoke wired (.github/workflows/bundle-smoke.yml: hurl v8.0.1 prebuilt download->--version on linux-x64/macos-x64/macos-arm64/windows-x64). 4-OS matrix GREEN in CI (run 28181495807, 2026-06-26): hurl v8.0.1 prebuilt ran on linux-x64 + macos-x64 + macos-arm64 + windows-x64. Cross-OS gate PASSED; remaining gate before candidate->ready = a fixture-based compact-output comparison (curl/raw vs hurl --test).",
+        "status": "Primary-source deep-vet passed. Hurl is mature, cross-platform, single-binary, and CI-oriented. Cross-OS smoke wired (.github/workflows/bundle-smoke.yml: hurl v8.0.1 prebuilt download->--version on linux-x64/macos-x64/macos-arm64/windows-x64). 4-OS matrix GREEN in CI (run 28181495807, 2026-06-26): hurl v8.0.1 prebuilt ran on linux-x64 + macos-x64 + macos-arm64 + windows-x64. Cross-OS gate PASSED. Fixture compact-output comparison PASSED (bench/_api_quality_hurl_ab.py 2026-06-26: hurl --test success 76 tok vs raw 170 = 55% cut, failure bounded 132 tok). Both promotion gates met -> catalog_status promoted candidate->ready.",
         "hosts": []
       }
     }
