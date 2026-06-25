@@ -76,6 +76,14 @@ class SkillSuggestionTests(unittest.TestCase):
                     "configuration."
                 ),
             ),
+            _skill(
+                "django-security",
+                "Django authentication, authorization, CSRF, and input security.",
+            ),
+            _skill(
+                "quarkus-security",
+                "Quarkus authentication, authorization, OIDC, and JWT security.",
+            ),
         )
 
     def test_clear_match_pushes_skill_ids_without_skill_bodies(self) -> None:
