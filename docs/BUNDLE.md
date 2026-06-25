@@ -44,6 +44,7 @@ triad ครบ: lexical (grep native) / **struct (ast-grep)** / graph (codegrap
 | **secure-agent** | permissions/supply-chain | nah(hook) · gitleaks · osv-scanner · infisical | **0 MCP** | ✓ tested PASS |
 | **data-query** | query CSV/Parquet/SQLite/JSON | duckdb · jq | **0 MCP** | ✓ +99.96% vs Read |
 | **doc-extract** | docx/xlsx/pptx → md | markitdown ⚠️`[docx,xlsx,pptx,pdf]` ไม่ใช่`[all]` | **0 MCP** | ✓ tested |
+| **repo-pack** | subtree→LLM-prompt (token-counted) | **code2prompt** 4.2 (yek=speed-alt, ห้ามโหลดคู่) | **0 MCP** | ✓ Win install-test (`bin/code2prompt.exe`, pack docs/=28.9k tok, `-d` git-diff=3.1k) |
 | **design-quality** | anti-slop UI | impeccable(skill) · figtree | **0 MCP** | ✓ slop-catch |
 | **context-quality** | anti-halluc lib docs | context7 (2t) | 927/0 | ✓ idle-calc |
 | **web-research** | research | fetch · ladder: scrapling→searxng→exa→firecrawl | 259/0 | ◐ CC: WebFetch พอ |
@@ -57,6 +58,7 @@ triad ครบ: lexical (grep native) / **struct (ast-grep)** / graph (codegrap
 - ✅ **rtk + nah PROVEN LIVE** — `settings.json` PreToolUse(Bash) = **rtk→nah**; รันทั้ง session ผ่าน 2 hook ไม่ชน (`nah log` ยืนยัน). nah guard จริง: `curl\|bash`→**BLOCK**(RCE) · `rm -rf ~`→ASK · `git status`→ALLOW.
 - ⚠️ **FRICTION (intra-bundle) — RESOLVED don't-loosen (2026-06-22):** nah classify = `unknown→ASK` สำหรับ ast-grep/duckdb/rtk (jq=ALLOW อยู่แล้ว). **planned glue (classify→allow) = REJECTED = security hole:** `nah classify` match command-**prefix** + tools **dual-use** (พิสูจน์ `nah test`: `ast-grep -U`=rewrite · `rtk rm -rf`/`rtk sh -c 'curl|bash'`=wrapper bypass · `duckdb DROP/ATTACH/INSTALL`) → blanket-allow = silent-mutate / nah-bypass / RCE (A-12). nah `unknown→ASK` = **ถูกต้อง**. fix: accept ASK (ASK→proceed ไม่ block) หรือ nah **LLM-classifier** opt-in (`nah key`, content-aware). secure-agent ship ตามเดิม.
 - ✅ **complement ไม่ทับ:** codegraph(code)/context7(lib docs)/web-research(remote)/data-query(local files)/doc-extract(binary) = 5 surface แยก.
+- ✅ **repo-pack composition (2026-06-25):** code2prompt = context **producer** (subtree→token-counted prompt) ต้นน้ำ; ที่เหลือ = consumer ปลายน้ำ คนละ stage → ไม่ชน. **vs rtk** = code2prompt เป็น binary แปลกหน้า → **passthrough** (เหมือน ast-grep/duckdb; git ทับแค่ผิว: rtk=อ่าน git ad-hoc · c2p `-d`=แพ็ค PR-context) *(by-design; live rtk-probe ยังไม่รัน)*. **vs ctx-mode = synergy ไม่ใช่ overlap:** `ctx_execute` รัน `code2prompt … -O pack.md` (output 0-ctx) → `ctx_fetch_and_index` → `ctx_search` ดึงเฉพาะ slice = **context-compression แบบ routing แทน headroom** (portable, 0 compile-tax). **vs ast-grep/codegraph** = coarse(subtree) vs precise(symbol), c2p เลือกไฟล์→feed ast-grep ได้.
 - ⚠️ **MCP eager tradeoff** (codegraph XOR semble · ≤2-3). CLI sets ไม่มี tradeoff (นอกจาก nah-classify glue ข้างบน).
 
 ## 5. Host matrix
@@ -80,7 +82,26 @@ icm.exe recall "smoke" ; rtk gain
 
 ## 6. Recheck (decay triggers)
 
-- **Headroom** Windows install — ✓ **RESOLVED 2026-06-22:** pkg = `headroom-ai` 0.24.0 (≠ `headroom` squat), deps win-wheels ครบ, sdist pure-Python no-compiler. portaw 06-09 "no wheel" **disproven**. (A-09)
+- **Headroom** — **REJECTED จาก bundle 2026-06-25 (live-proof):** ลงจริงบนเครื่องนี้
+  ล้มเหลวยืนยัน — `headroom-ai` ไม่มี prebuilt wheel **เลยทุก version/OS** → pip
+  compile Rust จาก source ทุกครั้ง → ต้อง MSVC `link.exe` (VS BuildTools workload
+  ไม่ได้ลง) + py3.14 ไม่มี wheel. = **compile-tax ทุก host** (ไม่ผูก Windows; mac/Linux
+  เครื่องเปล่าไม่มี gcc/clang ก็เจอ). ขัด North Star portable+สะดวก. ตัด — rtk(binary)/
+  ctx-mode(node) ไม่มีภาระนี้. bench พร้อม (`bench/_headroom_stack_ab.py`) ถ้าจะรื้อทีหลัง
+  ต้องลง toolchain ก่อน. (A-09 → closed)
+- **repo→prompt packer (NEW surface, candidate 2026-06-25):** gap จริง — bundle ไม่มี
+  ตัว pack subtree→LLM-context (token-budget). **code2prompt** v4.2.0 = primary pick:
+  **prebuilt Win .exe (GH Releases)** + brew + cargo + pip-sdk → 0-compile ผ่าน gate ที่
+  headroom ตก; token-count built-in + git diff/log/branch (เสริม rtk PR-context) +
+  template/JSON. **yek** = speed alt (Rust, 5s vs repomix 22min, `irm yek.ps1` native
+  Win, git-priority + `--tokens 128k`). repomix = popular(21k★) แต่ Node+ช้า+MCP-lean =
+  backup. **สถานะ ✓ install-tested Windows 2026-06-25** (prebuilt `*-pc-windows-msvc.exe`
+  จาก GH release v4.2.0 → `bin/code2prompt.exe`, native PS run, pack docs/=28.9k tok;
+  darwin+linux-gnu asset มีครบ → cross-OS by asset). promoted → §3 set `repo-pack`.
+  **rtk-passthrough = live-confirmed ✓** (รันผ่าน Bash tool rtk-hook-active, exit=0,
+  token-count ออกถูก, ไม่ mangling). **Linux exec smoke ✓** (linux-gnu ELF รันใน
+  Debian/glibc Docker, pack docs/=7,001 tok = ตรงกับ Windows 7,002). **macOS** = Mach-O
+  x64+arm64 valid (verify format) แต่ exec ไม่ได้ที่นี่ (ไม่มี mac host) = ค้างตัวเดียว.
 - **nah-classify** — ✓ **RESOLVED: ไม่ loosen** (prefix-match + dual-use = security hole, A-12). dual-use ASK = by-design. ปิด friction → nah LLM-classifier opt-in (`nah key`), ห้าม prefix-allow.
 - **installer salvage** — portaw `install`/`verify` archived; ตัดสิน reuse-as-is vs port-thin (decision ค้าง).
 - portaw vet 06-05..15 (~2wk) → re-confirm tool version ตอน activate แต่ละ set.

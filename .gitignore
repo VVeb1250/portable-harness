@@ -24,3 +24,6 @@ venv/
 
 # bench scratch — fixtures + vendored bundles, regenerable
 bench/out/
+
+# fetched-per-host tool binaries — CI/install UX downloads from upstream releases
+bin/

@@ -1,0 +1,59 @@
+name: code2prompt cross-OS smoke
+
+# Closes the macOS-exec gap that could not be tested on the Windows dev box.
+# Runs the prebuilt code2prompt release binary on all four host targets and
+# asserts: binary executes (--version) + packs docs/ with a non-zero token count.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/code2prompt-smoke.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash   # available on the Windows runner too -> one uniform script
+
+jobs:
+  smoke:
+    name: ${{ matrix.os }} (${{ matrix.asset }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: code2prompt-x86_64-unknown-linux-gnu
+            bin: code2prompt
+          - os: macos-13          # Intel x64
+            asset: code2prompt-x86_64-apple-darwin
+            bin: code2prompt
+          - os: macos-latest       # Apple Silicon arm64
+            asset: code2prompt-aarch64-apple-darwin
+            bin: code2prompt
+          - os: windows-latest
+            asset: code2prompt-x86_64-pc-windows-msvc.exe
+            bin: code2prompt.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download code2prompt v4.2.0 prebuilt binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v4.2.0 \
+            --repo mufeedvh/code2prompt \
+            --pattern '${{ matrix.asset }}' \
+            --output '${{ matrix.bin }}'
+          chmod +x '${{ matrix.bin }}' || true
+
+      - name: Version
+        run: ./'${{ matrix.bin }}' --version
+
+      - name: Pack docs/ + assert token count
+        run: |
+          ./'${{ matrix.bin }}' docs -i '*.md' -O - 2>&1 | tee out.txt | grep -i 'token count'
+          grep -qiE 'token count: *[1-9]' out.txt
