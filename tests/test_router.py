@@ -81,5 +81,89 @@ class RouterV0Tests(unittest.TestCase):
         self.assertTrue(payload["reasons"])
 
 
+class SmartRouterTests(unittest.TestCase):
+    def test_auto_complexity_keeps_tiny_documentation_work_solo(self) -> None:
+        decision = route(
+            RouteRequest(
+                task="Fix a typo in README.md.",
+                complexity="auto",
+                risk="auto",
+                sensitivity="public",
+            )
+        )
+
+        self.assertEqual(decision.classification["complexity"], "simple")
+        self.assertEqual(decision.classification["task_kind"], "docs")
+        self.assertEqual(decision.strategy, "solo")
+        self.assertGreaterEqual(decision.confidence, 0.7)
+
+    def test_auto_classification_escalates_security_migration(self) -> None:
+        decision = route(
+            RouteRequest(
+                task=(
+                    "Refactor authentication across multiple modules, migrate the "
+                    "credential schema, and add regression tests."
+                ),
+                complexity="auto",
+                risk="auto",
+                sensitivity="private",
+            )
+        )
+
+        self.assertEqual(decision.classification["complexity"], "complex")
+        self.assertEqual(decision.classification["risk"], "high")
+        self.assertEqual(decision.classification["task_kind"], "security")
+        self.assertEqual(decision.strategy, "team")
+        self.assertEqual(decision.roles["implementer"], "deepseek")
+
+    def test_budget_pressure_degrades_public_medium_risk_team_to_workhorse(self) -> None:
+        decision = route(
+            RouteRequest(
+                task="Refactor the parser across several files and fix its tests.",
+                complexity="complex",
+                risk="medium",
+                sensitivity="public",
+                max_budget_usd=0.20,
+            )
+        )
+
+        self.assertEqual(decision.status, "warning")
+        self.assertEqual(decision.strategy, "solo")
+        self.assertEqual(decision.roles, {"implementer": "deepseek"})
+        self.assertIn("budget:degraded", decision.constraints)
+        self.assertLessEqual(decision.estimated_cost_usd, 0.20)
+
+    def test_budget_never_overrides_restricted_privacy(self) -> None:
+        decision = route(
+            RouteRequest(
+                task="Refactor proprietary authentication code.",
+                complexity="complex",
+                risk="high",
+                sensitivity="restricted",
+                max_budget_usd=0.20,
+            )
+        )
+
+        self.assertEqual(decision.status, "error")
+        self.assertEqual(decision.strategy, "stop")
+        self.assertIn("privacy:restricted", decision.constraints)
+        self.assertIn("budget:insufficient", decision.constraints)
+
+    def test_unknown_agent_inventory_stops_with_recovery_action(self) -> None:
+        decision = route(
+            RouteRequest(
+                task="Implement a parser.",
+                complexity="complex",
+                risk="medium",
+                sensitivity="public",
+                available_agents=("mystery-agent",),
+            )
+        )
+
+        self.assertEqual(decision.status, "error")
+        self.assertEqual(decision.strategy, "stop")
+        self.assertTrue(decision.next_actions)
+
+
 if __name__ == "__main__":
     unittest.main()
