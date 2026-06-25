@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from typing import Sequence
 
+from paw.skill_graph import SkillGraph
 from paw.skill_router import (
     SkillRecord,
     build_task_capsule,
@@ -99,10 +100,31 @@ class SkillSuggestionTests(unittest.TestCase):
             ),
         )
 
+    @staticmethod
+    def semantic_scores(
+        task: str,
+        skills: Sequence[SkillRecord],
+    ) -> dict[str, float]:
+        text = task.casefold()
+        scores = {skill.name: 0.10 for skill in skills}
+        if "router" in text or "routing" in text:
+            scores["agent-harness-construction"] = 0.91
+        if "authentication" in text:
+            scores["security-review"] = 0.86
+            if "django" in text:
+                scores["django-security"] = 0.93
+            if "quarkus" in text:
+                scores["quarkus-security"] = 0.93
+        if "test" in text or "coverage" in text:
+            scores["tdd-workflow"] = 0.88
+        return scores
+
     def test_clear_match_pushes_skill_ids_without_skill_bodies(self) -> None:
         result = suggest_skill(
             "Make the PUSH skill router smarter and reduce context use.",
             self.skills,
+            semantic_scorer=self.semantic_scores,
+            reranker=self.semantic_scores,
         )
 
         self.assertEqual(result.status, "suggested")
@@ -114,12 +136,17 @@ class SkillSuggestionTests(unittest.TestCase):
         )
         self.assertEqual(result.suggestions[0].action, "load_skill")
         self.assertIn("relevance", result.suggestions[0].reason)
-        self.assertNotIn("Design and optimize", json.dumps(result.to_dict()))
+        self.assertNotIn(
+            "agent action spaces",
+            json.dumps(result.to_dict()).casefold(),
+        )
 
     def test_complementary_clear_matches_can_push_two_skills(self) -> None:
         result = suggest_skill(
             "Implement authentication safely using tests first and check coverage.",
             self.skills,
+            semantic_scorer=self.semantic_scores,
+            reranker=self.semantic_scores,
         )
 
         self.assertEqual(
@@ -134,10 +161,14 @@ class SkillSuggestionTests(unittest.TestCase):
         generic = suggest_skill(
             "Implement authentication safely.",
             self.skills,
+            semantic_scorer=self.semantic_scores,
+            reranker=self.semantic_scores,
         )
         django = suggest_skill(
             "Implement authentication safely in Django.",
             self.skills,
+            semantic_scorer=self.semantic_scores,
+            reranker=self.semantic_scores,
         )
 
         self.assertNotIn(
@@ -153,6 +184,8 @@ class SkillSuggestionTests(unittest.TestCase):
         result = suggest_skill(
             "Design a smarter agent router for skill selection.",
             self.skills,
+            semantic_scorer=self.semantic_scores,
+            reranker=self.semantic_scores,
         )
 
         self.assertEqual(result.suggestions[0].skill, "agent-harness-construction")
@@ -178,9 +211,21 @@ class SkillSuggestionTests(unittest.TestCase):
             _skill("beta", "Analyze Python application performance."),
         )
 
-        result = suggest_skill("Analyze Python application performance.", tied)
+        def tied_scores(
+            task: str,
+            skills: Sequence[SkillRecord],
+        ) -> dict[str, float]:
+            del task
+            return {skill.name: 0.90 for skill in skills}
 
-        self.assertEqual(result.status, "silent")
+        result = suggest_skill(
+            "Analyze Python application performance.",
+            tied,
+            semantic_scorer=tied_scores,
+            reranker=tied_scores,
+        )
+
+        self.assertEqual(result.suggestions, ())
         self.assertIn("ambiguous", result.reason)
 
     def test_active_skill_is_not_suggested_again(self) -> None:
@@ -188,10 +233,18 @@ class SkillSuggestionTests(unittest.TestCase):
             "Design a smarter skill router with a smaller context budget.",
             self.skills,
             active_skills=("agent-harness-construction",),
+            semantic_scorer=self.semantic_scores,
+            reranker=self.semantic_scores,
         )
 
-        self.assertEqual(result.status, "silent")
-        self.assertEqual(result.suggestions, ())
+        self.assertNotIn(
+            "agent-harness-construction",
+            {item.skill for item in result.suggestions},
+        )
+        self.assertNotIn(
+            "agent-harness-construction",
+            {item.skill for item in result.candidates},
+        )
 
     def test_multilingual_semantic_scorer_does_not_need_language_dictionaries(
         self,
@@ -222,11 +275,147 @@ class SkillSuggestionTests(unittest.TestCase):
                     semantic_scorer=semantic_scores,
                 )
 
-                self.assertEqual(
-                    result.suggestions[0].skill,
+                self.assertEqual(result.status, "candidates")
+                self.assertIn(
                     "agent-harness-construction",
+                    {item.skill for item in result.candidates},
                 )
-                self.assertIn("semantic", result.suggestions[0].reason)
+
+    def test_graph_intent_anchor_recovers_skill_from_noisy_direct_ranking(
+        self,
+    ) -> None:
+        graph = SkillGraph.from_dict(
+            {
+                "nodes": [
+                    {
+                        "id": "intent:agent-routing",
+                        "kind": "intent",
+                        "text": (
+                            "Design agent routing, action spaces, observation "
+                            "formats, and context-efficient skill selection."
+                        ),
+                    }
+                ],
+                "edges": [
+                    {
+                        "from": "intent:agent-routing",
+                        "to": "agent-harness-construction",
+                        "relation": "routes_to",
+                    }
+                ],
+            },
+            self.skills,
+        )
+
+        def noisy_scores(
+            task: str,
+            records: Sequence[SkillRecord],
+        ) -> dict[str, float]:
+            del task
+            return {
+                record.name: {
+                    "intent:agent-routing": 0.94,
+                    "skill-creator": 0.91,
+                    "write-a-skill": 0.88,
+                    "agent-harness-construction": 0.41,
+                }.get(record.name, 0.10)
+                for record in records
+            }
+
+        result = suggest_skill(
+            "设计一个为智能代理选择技能的路由器",
+            self.skills,
+            semantic_scorer=noisy_scores,
+            graph=graph,
+        )
+
+        self.assertEqual(result.status, "candidates")
+        self.assertIn(
+            "agent-harness-construction",
+            {item.skill for item in result.candidates},
+        )
+
+    def test_graph_collapses_substitutes_and_expands_complements(self) -> None:
+        graph = SkillGraph.from_dict(
+            {
+                "nodes": [],
+                "edges": [
+                    {
+                        "from": "security-review",
+                        "to": "tdd-workflow",
+                        "relation": "complements",
+                    },
+                    {
+                        "from": "skill-creator",
+                        "to": "write-a-skill",
+                        "relation": "substitutes",
+                    },
+                ],
+            },
+            self.skills,
+        )
+
+        def scores(
+            task: str,
+            records: Sequence[SkillRecord],
+        ) -> dict[str, float]:
+            del task
+            return {
+                record.name: {
+                    "security-review": 0.90,
+                    "skill-creator": 0.84,
+                    "write-a-skill": 0.82,
+                    "tdd-workflow": 0.20,
+                }.get(record.name, 0.10)
+                for record in records
+            }
+
+        result = suggest_skill(
+            "Implement authentication safely with regression tests.",
+            self.skills,
+            semantic_scorer=scores,
+            graph=graph,
+        )
+        names = [item.skill for item in result.candidates]
+
+        self.assertIn("security-review", names)
+        self.assertIn("tdd-workflow", names)
+        self.assertLessEqual(
+            len({"skill-creator", "write-a-skill"} & set(names)),
+            1,
+        )
+
+    def test_graph_output_is_bounded_and_weak_anchor_stays_silent(self) -> None:
+        graph = SkillGraph.from_dict({"nodes": [], "edges": []}, self.skills)
+
+        def weak_scores(
+            task: str,
+            records: Sequence[SkillRecord],
+        ) -> dict[str, float]:
+            del task
+            return {
+                record.name: 0.31 - (index * 0.001)
+                for index, record in enumerate(records)
+            }
+
+        result = suggest_skill(
+            "ช่วยสรุปประชุมเมื่อวานให้หน่อย",
+            self.skills,
+            semantic_scorer=weak_scores,
+            graph=graph,
+        )
+
+        self.assertEqual(result.status, "silent")
+        self.assertEqual(result.candidates, ())
+
+        strong = suggest_skill(
+            "Design an agent skill router.",
+            self.skills,
+            semantic_scorer=self.semantic_scores,
+            graph=graph,
+        )
+        self.assertLessEqual(len(strong.candidates), 3)
+        self.assertLess(len(json.dumps(strong.to_dict())), 1800)
 
 
 class SkillDiscoveryTests(unittest.TestCase):
@@ -289,13 +478,17 @@ class SkillDiscoveryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         payload = json.loads(result.stdout)
         self.assertEqual(payload["mode"], "shadow")
+        self.assertEqual(payload["status"], "candidates")
         self.assertEqual(
-            payload["suggestions"][0]["skill"],
+            payload["candidates"][0]["skill"],
             "agent-harness-construction",
         )
-        self.assertEqual(payload["suggestions"][0]["action"], "load_skill")
+        self.assertEqual(
+            payload["candidates"][0]["action"],
+            "consider_skill",
+        )
         self.assertTrue(
-            payload["suggestions"][0]["skill_path"].endswith("SKILL.md")
+            payload["candidates"][0]["skill_path"].endswith("SKILL.md")
         )
 
 
