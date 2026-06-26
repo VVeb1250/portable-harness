@@ -4,12 +4,16 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from paw.reflection import (
     Candidate,
     _store_cmd,
     capture,
     iter_entries,
+    load_watermark,
+    read_entries,
+    save_watermark,
     scan_transcript,
 )
 
@@ -170,6 +174,47 @@ class CaptureTests(unittest.TestCase):
         tmp.close()
         self.assertEqual(len(list(iter_entries(tmp.name))), 2)
         Path(tmp.name).unlink()
+
+
+class IncrementalTests(unittest.TestCase):
+    def _transcript(self, entries) -> str:
+        tmp = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False, encoding="utf-8")
+        for e in entries:
+            tmp.write(json.dumps(e) + "\n")
+        tmp.close()
+        return tmp.name
+
+    def test_read_entries_slices_and_counts(self) -> None:
+        path = self._transcript([user_text("one"), user_text("two"), user_text("three")])
+        entries, total = read_entries(path, start_line=2)
+        self.assertEqual(total, 3)
+        self.assertEqual(len(entries), 1)
+        Path(path).unlink()
+
+    def test_capture_only_scans_new_lines(self) -> None:
+        # a fail in the first turn, already past the watermark → not re-captured
+        path = self._transcript([
+            asst("Bash", "a", command="py boom"),
+            result("a", is_error=True, content="boom error"),
+            user_text("plain follow up"),
+        ])
+        calls: list = []
+        res = capture(path, start_line=2, store_runner=lambda c: calls.append(c) or 0)
+        self.assertEqual(res.candidates, [])
+        self.assertEqual(res.next_line, 3)
+        Path(path).unlink()
+
+    def test_watermark_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            target = Path(d) / "sess.json"
+            with mock.patch("paw.reflection._watermark_path", return_value=target):
+                self.assertEqual(load_watermark("sess"), 0)
+                save_watermark("sess", 42)
+                self.assertEqual(load_watermark("sess"), 42)
+
+    def test_watermark_empty_session_is_noop(self) -> None:
+        save_watermark("", 5)        # must not raise / not write
+        self.assertEqual(load_watermark(""), 0)
 
 
 class StoreCmdTests(unittest.TestCase):

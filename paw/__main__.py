@@ -21,7 +21,11 @@ from paw.blackboard import (
 )
 from paw.linker import LinkerError, apply_plan, build_plan, remove, verify
 from paw.recall import recall as recall_memory
-from paw.reflection import capture as reflect_capture
+from paw.reflection import (
+    capture as reflect_capture,
+    load_watermark,
+    save_watermark,
+)
 from paw.router import RouteRequest, route
 from paw.semantic_router import default_semantic_scorer
 from paw.skill_graph import default_skill_graph_path, load_skill_graph
@@ -184,7 +188,15 @@ def _reflect(args: argparse.Namespace) -> int:
         if not args.json:
             print("reflect: no transcript (pass --transcript or pipe the Stop-hook payload)")
         return 0
-    result = reflect_capture(transcript, session_id=session_id, write=not args.dry_run)
+    # incremental: CC fires Stop per turn, so resume from the per-session watermark
+    # (unless --full forces a full rescan). dry-run never advances the watermark.
+    use_wm = bool(session_id) and not args.full
+    start = load_watermark(session_id) if use_wm else 0
+    result = reflect_capture(
+        transcript, session_id=session_id, start_line=start, write=not args.dry_run
+    )
+    if use_wm and not args.dry_run:
+        save_watermark(session_id, result.next_line)
     if args.json:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
     else:
@@ -366,6 +378,7 @@ def main(argv: list[str] | None = None) -> int:
     reflect_p.add_argument("--transcript", help="transcript JSONL path (else read Stop-hook stdin)")
     reflect_p.add_argument("--session-id", help="session id for the pending keyword tag")
     reflect_p.add_argument("--dry-run", action="store_true", help="scan + print, do not write ICM")
+    reflect_p.add_argument("--full", action="store_true", help="ignore the per-session watermark; rescan the whole transcript")
     reflect_p.add_argument("--json", action="store_true")
 
     plan_p = sub.add_parser("plan", help="preview wiring a CLI set into a host (no mutation)")

@@ -26,6 +26,7 @@ Codex schema pending verify). Hook-safe: capture never raises across the boundar
 from __future__ import annotations
 
 import json
+import os
 import platform
 import re
 import subprocess
@@ -65,11 +66,26 @@ _NON_ERROR = re.compile(
 # --------------------------------------------------------------------------- #
 # transcript parsing (stdlib, fail-soft per line)
 # --------------------------------------------------------------------------- #
-def iter_entries(path: str | Path) -> Iterator[dict]:
+def iter_entries(path: str | Path, start_line: int = 0) -> Iterator[dict]:
+    """Parsed entries from ``start_line`` onward (0-based, fail-soft per line)."""
+    entries, _ = read_entries(path, start_line)
+    yield from entries
+
+
+def read_entries(path: str | Path, start_line: int = 0) -> tuple[list[dict], int]:
+    """Return (entries from start_line onward, total physical line count).
+
+    The line count is the watermark for incremental capture: CC's Stop hook fires
+    once per agent turn, so re-scanning the whole transcript each time would flood
+    ``pending`` with duplicates. Callers persist the returned total and pass it
+    back as ``start_line`` next turn so only new lines are scanned.
+    """
     p = Path(path)
     if not p.exists():
-        return
-    for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
+        return [], start_line
+    lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
+    out: list[dict] = []
+    for line in lines[start_line:]:
         line = line.strip()
         if not line:
             continue
@@ -78,7 +94,36 @@ def iter_entries(path: str | Path) -> Iterator[dict]:
         except ValueError:
             continue
         if isinstance(obj, dict):
-            yield obj
+            out.append(obj)
+    return out, len(lines)
+
+
+# --------------------------------------------------------------------------- #
+# per-session watermark (incremental capture across per-turn Stop firings)
+# --------------------------------------------------------------------------- #
+def _watermark_path(session_id: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)[:48] or "nosession"
+    return Path(os.path.expanduser("~/.paw/state/reflect")) / f"{safe}.json"
+
+
+def load_watermark(session_id: str) -> int:
+    if not session_id:
+        return 0
+    try:
+        return int(json.loads(_watermark_path(session_id).read_text(encoding="utf-8"))["line"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0
+
+
+def save_watermark(session_id: str, line: int) -> None:
+    if not session_id:
+        return
+    try:
+        p = _watermark_path(session_id)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps({"line": line}), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def _is_meta(entry: dict) -> bool:
@@ -282,12 +327,14 @@ class CaptureResult:
     candidates: list[Candidate]
     stored: int
     wrote: bool
+    next_line: int = 0
 
     def to_dict(self) -> dict:
         return {
             "transcript": self.transcript,
             "stored": self.stored,
             "wrote": self.wrote,
+            "next_line": self.next_line,
             "candidates": [
                 {"type": c.type, "signal": c.signal, "trigger": c.trigger, "detail": c.detail}
                 for c in self.candidates
@@ -296,7 +343,7 @@ class CaptureResult:
 
     def render(self) -> str:
         if not self.candidates:
-            return "🔍 reflect: no mistake candidates in transcript"
+            return "🔍 reflect: no mistake candidates in new transcript lines"
         verb = f"stored {self.stored}" if self.wrote else "would store"
         out = [f"🔍 reflect: {verb} → ICM pending ({len(self.candidates)} candidate(s))"]
         for c in self.candidates:
@@ -308,13 +355,17 @@ def capture(
     transcript_path: str | Path,
     *,
     session_id: str = "",
+    start_line: int = 0,
     store_runner: StoreRunner | None = None,
     write: bool = True,
 ) -> CaptureResult:
-    """Scan a transcript → park coarse candidates in ICM ``pending``. Never raises."""
+    """Scan a transcript from ``start_line`` → park coarse candidates in ICM
+    ``pending``. Never raises. ``next_line`` is the new watermark to persist."""
     runner = store_runner or _default_store
+    next_line = start_line
     try:
-        candidates = scan_transcript(iter_entries(transcript_path))
+        entries, next_line = read_entries(transcript_path, start_line)
+        candidates = scan_transcript(entries)
     except Exception:
         candidates = []
     stored = 0
@@ -325,4 +376,4 @@ def capture(
                     stored += 1
             except Exception:
                 continue
-    return CaptureResult(str(transcript_path), candidates, stored, write)
+    return CaptureResult(str(transcript_path), candidates, stored, write, next_line)
