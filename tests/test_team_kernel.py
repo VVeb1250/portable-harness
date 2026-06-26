@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 from paw.blackboard import BlackboardEntry, BlackboardResult, BlackboardScope
 from paw.router import RouteDecision
@@ -187,6 +193,55 @@ class TeamKernelTests(unittest.TestCase):
         self.assertEqual(result.iterations, 2)
         self.assertEqual([entry.role for entry in board.entries].count("evaluator"), 0)
         self.assertTrue(result.next_actions)
+
+
+class TeamKernelCliIntegrationTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("icm.exe"), "ICM CLI is not installed")
+    def test_cli_mock_run_uses_isolated_icm_blackboard(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database = str(Path(directory) / "team-kernel.db")
+            run = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "paw",
+                    "team",
+                    "run",
+                    "Refactor parser safely.",
+                    "--project",
+                    "portable-harness",
+                    "--run-id",
+                    "cli-smoke",
+                    "--complexity",
+                    "complex",
+                    "--risk",
+                    "medium",
+                    "--sensitivity",
+                    "public",
+                    "--mock",
+                    "--db",
+                    database,
+                    "--json",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(run.returncode, 0, run.stderr)
+            payload = json.loads(run.stdout)
+            self.assertEqual(payload["status"], "success")
+            self.assertEqual(payload["stopped_reason"], "evaluation_passed")
+            self.assertEqual(payload["iterations"], 1)
+            self.assertEqual(
+                [(entry["role"], entry["kind"]) for entry in payload["entries"]],
+                [
+                    ("planner", "plan"),
+                    ("implementer", "result"),
+                    ("reviewer", "review"),
+                    ("evaluator", "result"),
+                ],
+            )
 
 
 if __name__ == "__main__":
