@@ -35,8 +35,13 @@ resolve to `Invoke-Command`.
 - Evaluator failures are already fed into the next planner/implementer context.
 - Mock CLI emits a deterministic patch artifact (`mock-patch-1.diff`), so the
   blackboard path is testable without external models.
-- `codex-deepseek` still does not mutate files directly. Real mutation is the
-  next layer.
+- **Real mutation now lands (2026-06-26).** `paw/mutation.py` applies the
+  implementer's SEARCH/REPLACE handoff to the working tree transactionally, with
+  backup + rollback + path-traversal guard + unified-diff artifact.
+  `codex-deepseek` opts in via `paw team run --mutate {off,dry,apply}` (default
+  `off`; `dry` = diff only, `apply` = write with backups). The remaining gap is a
+  focused **verification** runner that tests the mutated tree and feeds the
+  evaluator.
 
 Verification already run by Codex:
 
@@ -70,9 +75,13 @@ Working evidence:
 
 Known weakness:
 
-- Live pending is noisy. Many candidates are expected TDD/diagnostic failures
-  like `shell_command failed: ...F [100%] -> fixed by ...`. Do not blindly
-  promote all pending entries into wiki memory. Tune filters or curate manually.
+- Live pending was noisy with expected TDD/diagnostic failures like
+  `shell_command failed: ...F [100%] -> fixed by ...`. **Tuned 2026-06-26**:
+  capture now suppresses harness-protocol errors, test-runner red-phase reports,
+  and throwaway inline probes at source (`paw/reflection.py` `_HARNESS_NOISE` /
+  `_TEST_FAIL` / `_PROBE_CMD`), plus a self-slip dismissal guard. Live pending
+  drained 4→1. Still review before promoting — real assertion/env lessons do
+  capture by design, and curation (Phase 3) remains the human-gated step.
 - `docs/HANDOFF.md` previously said Codex Stop stdin was unverified. It is now
   at least partially exercised on this machine (hook configured, watermark
   present, pending exists), but stdin shape should still be treated as a decayable
@@ -90,11 +99,14 @@ python -m paw curate --surface --limit 10
 
 Ordered next work:
 
-1. Implement a real mutation runner that can safely turn implementer handoff
-   into patch/search-replace artifacts, with explicit rollback/backup policy.
-2. Implement a focused verification runner (affected tests, `compileall`,
-   selected `paw verify`, or explicit command artifact) and feed its output into
-   the existing evaluator loop.
+1. ~~Implement a real mutation runner~~ **DONE 2026-06-26** — `paw/mutation.py`
+   (`apply_to_tree`): transactional SEARCH/REPLACE apply with backup + rollback +
+   path-traversal guard + unified-diff artifact; wired via
+   `team_adapters.make_mutation_runner` and `paw team run --mutate {off,dry,apply}`.
+2. **(now the top open item)** Implement a focused verification runner (affected
+   tests, `compileall`, selected `paw verify`, or explicit command artifact) that
+   runs against the **mutated** tree and feeds its output into the existing
+   evaluator loop. This closes the mutate→verify→revise cycle.
 3. Add CI that runs Python/runtime surfaces on `paw/**`, `tests/**`, and docs
    changes. Current GitHub workflow for bundle smoke is green, but path filters
    do not cover the latest Team Kernel code.
