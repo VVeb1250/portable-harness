@@ -21,6 +21,7 @@ from paw.blackboard import (
 )
 from paw.linker import LinkerError, apply_plan, build_plan, remove, verify
 from paw.recall import recall as recall_memory
+from paw.curate import curate as curate_pending
 from paw.reflection import (
     capture as reflect_capture,
     load_watermark,
@@ -204,6 +205,23 @@ def _reflect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _curate(args: argparse.Namespace) -> int:
+    """Reconcile ICM pending → wiki. Hook-safe (SessionStart): always returns 0.
+
+    ``--surface`` is quiet when pending is empty (so the SessionStart shim adds
+    nothing on a clean start) and never writes — it only previews what curation
+    would do, leaving the apply to an explicit ``paw curate`` run.
+    """
+    result = curate_pending(write=not (args.dry_run or args.surface), limit=args.limit)
+    if args.json:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        out = result.render(surface=args.surface)
+        if out:
+            print(out)
+    return 0
+
+
 def _print_tx(result, as_json: bool) -> int:
     if as_json:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
@@ -381,6 +399,15 @@ def main(argv: list[str] | None = None) -> int:
     reflect_p.add_argument("--full", action="store_true", help="ignore the per-session watermark; rescan the whole transcript")
     reflect_p.add_argument("--json", action="store_true")
 
+    curate_p = sub.add_parser(
+        "curate",
+        help="reconcile ICM pending candidates into the wiki (add / bump recurrence)",
+    )
+    curate_p.add_argument("--surface", action="store_true", help="preview only, quiet when pending empty (SessionStart)")
+    curate_p.add_argument("--dry-run", action="store_true", help="show decisions, do not write ICM")
+    curate_p.add_argument("--limit", type=int, help="cap how many pending entries to process")
+    curate_p.add_argument("--json", action="store_true")
+
     plan_p = sub.add_parser("plan", help="preview wiring a CLI set into a host (no mutation)")
     _add_linker_args(plan_p, with_scope=True)
     apply_p = sub.add_parser("apply", help="wire a CLI set into a host (drift-guarded, backed up)")
@@ -408,6 +435,8 @@ def main(argv: list[str] | None = None) -> int:
         return _recall(args)
     if args.group == "reflect":
         return _reflect(args)
+    if args.group == "curate":
+        return _curate(args)
     p.print_help()
     return 2
 
