@@ -456,7 +456,7 @@ class SkillDiscoveryTests(unittest.TestCase):
             (skill_dir / "SKILL.md").write_text(
                 "---\n"
                 "name: agent-harness-construction\n"
-                "description: Design agent routing, action spaces, and context budgets.\n"
+                "description: Design PUSH skill router action spaces and context budget.\n"
                 "---\n",
                 encoding="utf-8",
             )

@@ -78,7 +78,7 @@ jobs:
       - name: Install paw + testmon, select affected tests
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e . pytest pytest-testmon numpy
+          python -m pip install -e ".[cli]" pytest pytest-testmon numpy
           # baseline run builds the coverage->test dependency map
           python -m pytest --testmon tests/ -q
           test -f .testmondata || { echo "::error::.testmondata not created on $RUNNER_OS"; exit 1; }
