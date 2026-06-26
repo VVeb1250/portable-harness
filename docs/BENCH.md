@@ -24,6 +24,50 @@ python bench/swe_probe/verify_freeze.py
 Result: `team3 5/8 > codex-solo 4/8 > claude-solo 2/6 ≈ deepseek-solo 2/8`.
 Do not append future runs to this cohort; create a new dated manifest.
 
+### Phase B — premium-quota projection (2026-06-26, no new runs)
+
+> Phase A asked *does quality hold + quota shift?* — yes. Phase B converts the
+> **already-frozen** per-arm token records (`results/sympy__sympy-*.json`) into the
+> real seat model to answer the existential question directly: **how much scarce
+> premium-Claude (Opus) quota does routing to the team actually free?** This is
+> arithmetic over in-hand data — it adds no runs and does not touch the frozen cohort.
+
+**Seat model.** Each arm taxes a *different* budget, and only one is the scarce
+Max-plan seat:
+
+| arm | resolved | seat it taxes | premium-Opus tokens | per **resolved** |
+|---|---|---|---|---|
+| claude-solo | 2/6 | **Claude Max (Opus)** — scarce | 91,286 in / 1,123 out | **45,643 in/resolved** |
+| codex-solo | 4/8 | ChatGPT-sub (Codex) | 0 Opus | 0 |
+| deepseek-solo | 2/8 | DeepSeek meter ($) | 0 Opus | 0 |
+| **team3** | **5/8** | Codex-sub (plan/review) + DeepSeek meter | **0 Opus** | **0** |
+
+**The projection.** Patch-generation done *solo on Claude* costs ≈15.2k Opus-in per
+instance and, at the 33% single-shot resolve rate, ≈**45.6k Opus-in per resolved
+task** (a tiktoken **floor** — hidden thinking tokens are not counted, so the true
+cost is higher). Routed to `team3`, the same work resolves at 62.5% for **zero**
+Opus: the bulk implementation rides DeepSeek's meter (cents) and the plan/review
+rides the *separate* Codex-sub quota. So for a fixed Max budget `Q` of Opus-in:
+
+| Q (Opus-in / window) | solo resolves | team3 resolves |
+|---|---|---|
+| 200,000 | ~4.4 tasks | unbounded by Claude quota — **Q fully freed** |
+| 1,000,000 | ~21.9 tasks | unbounded by Claude quota — **Q fully freed** |
+
+**Existential answer.** Direction is settled and robust: routing SWE patch-gen to
+the team shifts **~100% of the premium-Claude quota it would otherwise burn off the
+scarce seat**, while *raising* resolution (5/8 vs 2/6). Every Opus token not spent on
+patch-gen is returned to the work only the premium seat can do. The deferred agentic
+`claude-solo` arm would only *widen* this gap (single-shot already burns premium
+quota for half the resolution); the floor caveat means the advantage here is
+**understated, not overstated**.
+
+⚠️ **Caveats (magnitude soft, direction firm):** N=8, one repo, single-shot, oracle
+retrieval. claude-solo Opus cost is a floor (no thinking tokens) → conservative.
+Codex-sub has its own (non-Claude) quota cap not modeled as scarce here — the claim
+is specifically about the *Claude Max* seat. "Unbounded by Claude quota" means the
+Claude seat is not the binding constraint for team3, not that the work is free.
+
 ---
 
 ## 0. มิติตัดสิน (อย่าวัดแค่ compression %)
