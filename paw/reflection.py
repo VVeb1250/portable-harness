@@ -376,10 +376,7 @@ def _misalign_candidates(texts: list[str]) -> list[Candidate]:
     return out
 
 
-def scan_transcript(entries: Iterator[dict] | list[dict], host: str = "claude-code") -> list[Candidate]:
-    entries = list(entries)
-    cands = (_exec_candidates(_tool_events(entries, host))
-             + _misalign_candidates(_user_texts(entries, host)))
+def dedup_cap(cands: list[Candidate]) -> list[Candidate]:
     seen: set[str] = set()
     uniq: list[Candidate] = []
     for c in cands:
@@ -389,6 +386,13 @@ def scan_transcript(entries: Iterator[dict] | list[dict], host: str = "claude-co
         seen.add(fp)
         uniq.append(c)
     return uniq[:_MAX_CANDIDATES]
+
+
+def scan_transcript(entries: Iterator[dict] | list[dict], host: str = "claude-code") -> list[Candidate]:
+    entries = list(entries)
+    cands = (_exec_candidates(_tool_events(entries, host))
+             + _misalign_candidates(_user_texts(entries, host)))
+    return dedup_cap(cands)
 
 
 # --------------------------------------------------------------------------- #
@@ -453,16 +457,25 @@ def capture(
     session_id: str = "",
     start_line: int = 0,
     host: str = "claude-code",
+    llm: bool = False,
+    llm_caller=None,
     store_runner: StoreRunner | None = None,
     write: bool = True,
 ) -> CaptureResult:
     """Scan a transcript from ``start_line`` → park coarse candidates in ICM
-    ``pending``. Never raises. ``next_line`` is the new watermark to persist."""
+    ``pending``. Never raises. ``next_line`` is the new watermark to persist.
+
+    ``llm`` adds the opt-in silent-bug second pass (DeepSeek; bench-justified) on
+    top of the heuristic — off on the hook hot path to keep per-turn Stop cheap."""
     runner = store_runner or _default_store
     next_line = start_line
     try:
         entries, next_line = read_entries(transcript_path, start_line)
         candidates = scan_transcript(entries, host)
+        if llm or llm_caller is not None:
+            from paw.reflect_llm import silent_bug_candidates
+            extra = silent_bug_candidates(_tool_events(entries, host), caller=llm_caller)
+            candidates = dedup_cap(candidates + extra)
     except Exception:
         candidates = []
     stored = 0

@@ -199,7 +199,7 @@ def _reflect(args: argparse.Namespace) -> int:
     start = load_watermark(session_id) if use_wm else 0
     result = reflect_capture(
         transcript, session_id=session_id, start_line=start,
-        host=args.host, write=not args.dry_run,
+        host=args.host, llm=args.llm, write=not args.dry_run,
     )
     if use_wm and not args.dry_run:
         save_watermark(session_id, result.next_line)
@@ -404,6 +404,7 @@ def main(argv: list[str] | None = None) -> int:
     reflect_p.add_argument("--session-id", help="session id for the pending keyword tag")
     reflect_p.add_argument("--dry-run", action="store_true", help="scan + print, do not write ICM")
     reflect_p.add_argument("--full", action="store_true", help="ignore the per-session watermark; rescan the whole transcript")
+    reflect_p.add_argument("--llm", action="store_true", help="add the opt-in DeepSeek silent-bug pass (needs DEEPSEEK_API_KEY; $/latency)")
     reflect_p.add_argument("--json", action="store_true")
 
     curate_p = sub.add_parser(
