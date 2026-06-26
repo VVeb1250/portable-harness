@@ -11,9 +11,9 @@
 - **economics gate ผ่าน:** frozen SymPy N=8 = `team3 5/8 > codex-solo 4/8 > claude-solo 2/6 ≈ deepseek-solo 2/8`. Canonical manifest: `bench/swe_probe/FROZEN_N8_2026-06-25.json`; verify with `python bench/swe_probe/verify_freeze.py`.
 - **router live:** `python -m paw route` — deterministic complexity/risk/privacy/budget/fallback policy + JSON contract; 14 tests, 91.3% statement coverage.
 - **shared blackboard live:** `python -m paw blackboard write/read` — ICM topic `<project>/blackboard/<run-id>`, versioned/bounded/secret-safe; real isolated ICM SQLite round-trip passes.
-- **Team Kernel v0 runtime + CLI smoke live:** `paw.team_kernel.TeamKernel` executes RouteDecision-shaped Planner → Implementer → Reviewer → evaluator/stop loops with bounded retries and blackboard handoffs. `python -m paw team run ... --mock --db <isolated.db>` proves real ICM write/read transport; no real agent launcher yet.
+- **Team Kernel v0 runtime + CLI live:** `paw.team_kernel.TeamKernel` executes RouteDecision-shaped Planner → Implementer → Reviewer → evaluator/stop loops with bounded retries and blackboard handoffs. `python -m paw team run ... --mock --db <isolated.db>` proves real ICM write/read transport. `--adapters codex-deepseek` wires Codex read-only plan/review + DeepSeek implementer handoff; it is explicit because it may call external tools/APIs.
 - **portable claim:** decision + data protocol portable; execution and enforcement remain host-tiered. Do not claim uniform hooks/security.
-- **next:** wire real Codex/DeepSeek adapters around Team Kernel, lifting contracts from `swe_probe` without importing the frozen cohort into runtime code.
+- **next:** add mutation/evaluation layer for Team Kernel outputs: apply/search-replace or patch artifacts, run focused verification, and feed failures back without importing the frozen benchmark cohort.
 - **benchmark is frozen:** do not append to the N=8 cohort. New repo/model/N requires a new dated cohort and manifest.
 
 ---
@@ -58,7 +58,7 @@
 - **rtk** — token-cut Bash-hook (global). บีบ git ดี แต่ workload นี้ rtk-able แค่ ~0.8% (Read 62% ครอง).
 - **nah 0.9.1** — security guard PreToolUse (BLOCK curl|bash · ASK dual-use/rm-rf · ALLOW git_safe). dual-use→ASK ห้าม loosen.
 - **context-mode MCP** (project-scoped `.mcp.json`, ELv2 local-first) — ctx_* 11 tools, +7.9k tok/session repo นี้. routing nudge block ใน CLAUDE.md. **gate = folded (§D).**
-- **paw router + blackboard + team kernel** — route decision, shared-state, and Team Kernel mock-smoke CLIs live. Contract tests: 27 across router/blackboard/kernel.
+- **paw router + blackboard + team kernel** — route decision, shared-state, Team Kernel mock-smoke, and explicit Codex/DeepSeek adapter profile live. Contract tests: 33 across router/blackboard/kernel/adapters.
 - **swe-probe** `bench/swe_probe/` — frozen SymPy N=8 evidence; verifier runs without paid arms.
 - WSL Ubuntu + swebench + Docker Desktop (flask env-image cached, eval ~1-2min). `$env:DEEPSEEK_API_KEY` set. ccusage 20.0.14 · tiktoken 0.13.0 · iii.exe PATH.
 - **ECC plugin hooks** = 24 hooks (node-spawn ทุก tool-call, CC-locked). **DECISION 2026-06-25: `ECC_HOOK_PROFILE=minimal`** set ใน `~/.claude/settings.json` `env` (มีผล session หน้า). minimal = ตัด tier `standard` (gateguard fact-force, ecc-context-monitor cost-warning, quality-gate, console/design/doc warnings, suggest-compact) เก็บเฉพาะ minimal-tier (observe/metrics/cost-tracker/session-end = เงียบ, feed ICM). knob อื่น: `ECC_DISABLED_HOOKS=id,id` (surgical) · `ECC_GATEGUARD=off` (gate ตัวเดียว).
@@ -125,10 +125,11 @@
 
 1. ~~Team Kernel v0 contract~~ **DONE 2026-06-26** — `paw.team_kernel.TeamKernel` runs Planner → Implementer → Reviewer → evaluator/stop with bounded retries, review-gated evaluation, explicit stop reasons, and blackboard handoffs. Adapter-injected only; no real agent launcher yet.
 2. ~~Team Kernel CLI + isolated ICM smoke~~ **DONE 2026-06-26** — `python -m paw team run <task> --project <p> --run-id <r> --mock --db <isolated.db> --json` writes/reads real `<project>/blackboard/<run-id>` entries.
-3. Lift Codex/DeepSeek adapter contracts from `swe_probe` without importing the frozen benchmark cohort into runtime code. Real adapters replace the mock path after this contract lands.
-4. Add Linux/macOS CI for router + blackboard + Team Kernel; Windows is already live.
-5. Implement `paw link/verify/unlink` after the Team Kernel contract settles.
-6. Optional later benchmark work must use a new dated cohort.
+3. ~~Lift Codex/DeepSeek adapter contracts from `swe_probe`~~ **DONE 2026-06-26** — `paw.team_adapters` has Codex read-only CLI planner/reviewer (`codex exec --json -o`) and DeepSeek Anthropic-compatible implementer (`/v1/messages`, `$DEEPSEEK_API_KEY`). Claude is intentionally not in the default runtime path; keep it as optional benchmark/comparison only.
+4. Add mutation/evaluation layer: convert implementer handoff into patch/artifact application, run focused verification, and feed failures back into reviewer/implementer retries.
+5. Add Linux/macOS CI for router + blackboard + Team Kernel; Windows is already live.
+6. Implement `paw link/verify/unlink` after the Team Kernel contract settles.
+7. Optional later benchmark work must use a new dated cohort.
 
 > Everything below in §F is a historical backlog retained for provenance; do not resume it over the ordered list above.
 

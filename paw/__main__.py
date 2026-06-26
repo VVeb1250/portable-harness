@@ -32,6 +32,7 @@ from paw.semantic_router import default_semantic_scorer
 from paw.skill_graph import default_skill_graph_path, load_skill_graph
 from paw.skill_router import default_skill_roots, discover_skills, suggest_skill
 from paw.sets.loader import SetsError, get_set, load_all
+from paw.team_adapters import AdapterError, build_codex_deepseek_adapters
 from paw.team_kernel import EvaluationResult, RoleOutput, TeamKernel, TeamKernelContext
 
 
@@ -192,28 +193,7 @@ def _mock_evaluator(context: TeamKernelContext) -> EvaluationResult:
 def _team(args: argparse.Namespace) -> int:
     if args.team_action != "run":
         return 2
-    if not args.mock:
-        message = (
-            "team run currently supports only --mock; real Codex/DeepSeek adapters "
-            "are the next runtime layer."
-        )
-        if args.json:
-            print(
-                json.dumps(
-                    {
-                        "status": "error",
-                        "summary": message,
-                        "next_actions": [
-                            "Run with --mock for the ICM smoke path or wire adapters first."
-                        ],
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )
-            )
-        else:
-            print(message, file=sys.stderr)
-        return 1
+    adapter_profile = "mock" if args.mock else args.adapters
 
     decision = route(
         RouteRequest(
@@ -226,15 +206,41 @@ def _team(args: argparse.Namespace) -> int:
         )
     )
     board = IcmBlackboard(database=Path(args.db) if args.db else None)
-    result = TeamKernel(
-        project=args.project,
-        run_id=args.run_id,
-        blackboard=board,
-        planner=_mock_planner,
-        implementer=_mock_implementer,
-        reviewer=_mock_reviewer,
-        evaluator=_mock_evaluator,
-    ).run(task=args.task, decision=decision)
+    if adapter_profile == "mock":
+        planner = _mock_planner
+        implementer = _mock_implementer
+        reviewer = _mock_reviewer
+        evaluator = _mock_evaluator
+    else:
+        adapters = build_codex_deepseek_adapters(repo=Path.cwd())
+        planner = adapters.planner
+        implementer = adapters.implementer
+        reviewer = adapters.reviewer
+        evaluator = adapters.evaluator
+
+    try:
+        result = TeamKernel(
+            project=args.project,
+            run_id=args.run_id,
+            blackboard=board,
+            planner=planner,
+            implementer=implementer,
+            reviewer=reviewer,
+            evaluator=evaluator,
+        ).run(task=args.task, decision=decision)
+    except AdapterError as error:
+        payload = {
+            "status": "error",
+            "summary": str(error),
+            "next_actions": [
+                "Check adapter authentication/configuration, then retry with the same run id.",
+            ],
+        }
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(payload["summary"], file=sys.stderr)
+        return 1
 
     if args.json:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
@@ -498,7 +504,13 @@ def main(argv: list[str] | None = None) -> int:
         metavar="AGENT",
     )
     team_run.add_argument("--max-budget-usd", type=float)
-    team_run.add_argument("--mock", action="store_true")
+    team_run.add_argument(
+        "--adapters",
+        choices=("mock", "codex-deepseek"),
+        default="mock",
+        help="role adapter profile; codex-deepseek may call external tools/APIs",
+    )
+    team_run.add_argument("--mock", action="store_true", help="alias for --adapters mock")
     team_run.add_argument("--db", help="ICM SQLite path; omit to use configured memory")
     team_run.add_argument("--json", action="store_true")
 
