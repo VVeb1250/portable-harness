@@ -315,6 +315,78 @@ class TeamKernelCliIntegrationTests(unittest.TestCase):
             ],
         )
 
+    def test_cli_blocks_codex_deepseek_for_restricted_work_before_adapter_build(self) -> None:
+        from paw import __main__ as paw_main
+
+        def forbidden_build(*, repo: Path) -> TeamAdapterProfile:
+            self.fail("restricted work must not build an external DeepSeek adapter")
+
+        with patch.object(paw_main, "build_codex_deepseek_adapters", forbidden_build):
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                code = paw_main.main(
+                    [
+                        "team",
+                        "run",
+                        "Fix proprietary authentication code.",
+                        "--project",
+                        "portable-harness",
+                        "--run-id",
+                        "restricted-profile",
+                        "--complexity",
+                        "complex",
+                        "--risk",
+                        "high",
+                        "--sensitivity",
+                        "restricted",
+                        "--adapters",
+                        "codex-deepseek",
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "error")
+        self.assertIn("restricted", payload["summary"].lower())
+        self.assertIn("external", payload["summary"].lower())
+
+    def test_cli_blocks_codex_deepseek_when_route_is_not_codex_deepseek_team(self) -> None:
+        from paw import __main__ as paw_main
+
+        def forbidden_build(*, repo: Path) -> TeamAdapterProfile:
+            self.fail("route mismatch must block before adapter build")
+
+        with patch.object(paw_main, "build_codex_deepseek_adapters", forbidden_build):
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                code = paw_main.main(
+                    [
+                        "team",
+                        "run",
+                        "Fix a typo in README.md.",
+                        "--project",
+                        "portable-harness",
+                        "--run-id",
+                        "route-mismatch",
+                        "--complexity",
+                        "auto",
+                        "--risk",
+                        "auto",
+                        "--sensitivity",
+                        "public",
+                        "--adapters",
+                        "codex-deepseek",
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "error")
+        self.assertIn("route", payload["summary"].lower())
+        self.assertIn("codex-deepseek", payload["summary"])
+
 
 if __name__ == "__main__":
     unittest.main()
