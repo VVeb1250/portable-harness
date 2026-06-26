@@ -198,6 +198,98 @@ class TeamKernelTests(unittest.TestCase):
         self.assertEqual([entry.role for entry in board.entries].count("evaluator"), 0)
         self.assertTrue(result.next_actions)
 
+    def test_mutation_artifact_and_verification_failure_feed_next_iteration(self) -> None:
+        board = InMemoryBlackboard()
+        planner_contexts: list[TeamKernelContext] = []
+
+        def planner(context: TeamKernelContext) -> RoleOutput:
+            planner_contexts.append(context)
+            return RoleOutput(content=f"Plan iteration {context.iteration}")
+
+        def implementer(context: TeamKernelContext) -> RoleOutput:
+            if context.iteration == 2:
+                self.assertTrue(
+                    any(
+                        entry.role == "evaluator"
+                        and entry.content.startswith("FAIL: focused verification failed")
+                        for entry in context.entries
+                    )
+                )
+            return RoleOutput(content=f"Handoff iteration {context.iteration}")
+
+        def mutation_runner(context: TeamKernelContext) -> RoleOutput:
+            latest = context.entries[-1]
+            self.assertEqual(latest.role, "implementer")
+            return RoleOutput(
+                content=f"Patch artifact for {latest.content}",
+                artifact=f"patch-{context.iteration}.diff",
+                importance="high",
+            )
+
+        def reviewer(context: TeamKernelContext) -> RoleOutput:
+            self.assertTrue(any(entry.role == "mutator" for entry in context.entries))
+            return RoleOutput(content="PASS: patch artifact is ready for verification.")
+
+        def evaluator(context: TeamKernelContext) -> EvaluationResult:
+            self.assertTrue(
+                any(
+                    entry.artifact == f"patch-{context.iteration}.diff"
+                    for entry in context.entries
+                )
+            )
+            if context.iteration == 1:
+                return EvaluationResult(
+                    passed=False,
+                    summary="focused verification failed: tests/test_parser.py",
+                    artifact="verify-1.log",
+                )
+            return EvaluationResult(
+                passed=True,
+                summary="focused verification passed",
+                artifact="verify-2.log",
+            )
+
+        result = TeamKernel(
+            project="portable-harness",
+            run_id="kernel-mutate",
+            blackboard=board,
+            planner=planner,
+            implementer=implementer,
+            mutation_runner=mutation_runner,
+            reviewer=reviewer,
+            evaluator=evaluator,
+        ).run(
+            task="Apply implementer handoff safely.",
+            decision=_team_decision(max_iterations=2),
+        )
+
+        self.assertEqual(result.status, "success")
+        self.assertEqual(result.iterations, 2)
+        self.assertTrue(
+            any(
+                entry.role == "evaluator"
+                and entry.content.startswith("FAIL: focused verification failed")
+                for entry in planner_contexts[1].entries
+            )
+        )
+        self.assertEqual(
+            [entry.role for entry in board.entries],
+            [
+                "planner",
+                "implementer",
+                "mutator",
+                "reviewer",
+                "evaluator",
+                "planner",
+                "implementer",
+                "mutator",
+                "reviewer",
+                "evaluator",
+            ],
+        )
+        self.assertIn("patch-1.diff", result.artifacts)
+        self.assertIn("verify-1.log", result.artifacts)
+
 
 class TeamKernelCliIntegrationTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("icm.exe"), "ICM CLI is not installed")
@@ -242,10 +334,12 @@ class TeamKernelCliIntegrationTests(unittest.TestCase):
                 [
                     ("planner", "plan"),
                     ("implementer", "result"),
+                    ("mutator", "result"),
                     ("reviewer", "review"),
                     ("evaluator", "result"),
                 ],
             )
+            self.assertIn("mock-patch-1.diff", payload["artifacts"])
 
     def test_cli_codex_deepseek_profile_is_wired_without_claude(self) -> None:
         from paw import __main__ as paw_main

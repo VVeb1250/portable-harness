@@ -101,6 +101,7 @@ class TeamKernel:
         implementer: RoleAdapter,
         reviewer: RoleAdapter,
         evaluator: Evaluator,
+        mutation_runner: RoleAdapter | None = None,
     ) -> None:
         self.scope = BlackboardScope(project=project, run_id=run_id)
         self.blackboard = blackboard
@@ -108,6 +109,7 @@ class TeamKernel:
         self.implementer = implementer
         self.reviewer = reviewer
         self.evaluator = evaluator
+        self.mutation_runner = mutation_runner
 
     def run(self, *, task: str, decision: RouteDecision) -> TeamKernelResult:
         if decision.status == "error" or decision.strategy == "stop":
@@ -135,6 +137,14 @@ class TeamKernel:
             write = self._write("implementer", "result", implementation)
             if write.status == "error":
                 return self._blackboard_error(write, decision, iteration)
+
+            if self.mutation_runner is not None:
+                mutation = self.mutation_runner(
+                    self._context(task, decision, iteration)
+                )
+                write = self._write("mutator", "result", mutation)
+                if write.status == "error":
+                    return self._blackboard_error(write, decision, iteration)
 
             review = self.reviewer(self._context(task, decision, iteration))
             last_review = review.content

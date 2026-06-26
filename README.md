@@ -17,7 +17,9 @@ python -m paw blackboard write --project portable-harness --run-id demo --role p
 python -m paw blackboard read --project portable-harness --run-id demo --query "regression tests"
 ```
 
-Smoke the Team Kernel without calling external models:
+Smoke the Team Kernel without calling external models. The mock path writes the
+planner, implementer, mutator, reviewer, and evaluator handoffs to the shared
+blackboard, including a deterministic patch artifact reference:
 
 ```
 python -m paw team run "Refactor the parser safely" --project portable-harness --run-id demo-team --complexity complex --risk medium --sensitivity public --mock --json

@@ -182,6 +182,19 @@ def _mock_implementer(context: TeamKernelContext) -> RoleOutput:
     )
 
 
+def _mock_mutation_runner(context: TeamKernelContext) -> RoleOutput:
+    latest = next(
+        (entry for entry in reversed(context.entries) if entry.role == "implementer"),
+        None,
+    )
+    source = latest.content if latest is not None else "implementation handoff"
+    return RoleOutput(
+        content=f"Mock patch artifact generated from: {source}",
+        artifact=f"mock-patch-{context.iteration}.diff",
+        importance="high",
+    )
+
+
 def _mock_reviewer(context: TeamKernelContext) -> RoleOutput:
     return RoleOutput(content="PASS: mock review accepted the implementation handoff.")
 
@@ -217,12 +230,14 @@ def _team(args: argparse.Namespace) -> int:
     if adapter_profile == "mock":
         planner = _mock_planner
         implementer = _mock_implementer
+        mutation_runner = _mock_mutation_runner
         reviewer = _mock_reviewer
         evaluator = _mock_evaluator
     else:
         adapters = build_codex_deepseek_adapters(repo=Path.cwd())
         planner = adapters.planner
         implementer = adapters.implementer
+        mutation_runner = None
         reviewer = adapters.reviewer
         evaluator = adapters.evaluator
 
@@ -233,6 +248,7 @@ def _team(args: argparse.Namespace) -> int:
             blackboard=board,
             planner=planner,
             implementer=implementer,
+            mutation_runner=mutation_runner,
             reviewer=reviewer,
             evaluator=evaluator,
         ).run(task=args.task, decision=decision)
