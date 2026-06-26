@@ -170,15 +170,54 @@ class DeepSeekTextAdapter:
         return RoleOutput(content=text, artifact=_usage_artifact("deepseek", usage, 0))
 
 
-def build_codex_deepseek_adapters(*, repo: Path) -> TeamAdapterProfile:
+def make_mutation_runner(*, repo: Path, dry_run: bool = True) -> RoleAdapter:
+    """A mutation_runner that turns the latest implementer handoff into real
+    SEARCH/REPLACE edits under ``repo`` (transactional, backed up — see
+    ``paw.mutation``). ``dry_run`` computes the diff without writing, so a team run
+    is non-destructive by default; the caller opts into writing explicitly."""
+    from paw.mutation import apply_to_tree
+
+    def mutation_runner(context: TeamKernelContext) -> RoleOutput:
+        latest = next(
+            (e for e in reversed(context.entries) if e.role == "implementer"),
+            None,
+        )
+        if latest is None:
+            return RoleOutput(content="no implementer handoff to apply", importance="medium")
+        result = apply_to_tree(latest.content, repo, dry_run=dry_run)
+        verb = "would change" if dry_run else "changed"
+        head = f"mutation {result.status}: {result.summary}"
+        body = (f"\n{verb}: {', '.join(result.applied)}" if result.applied else "")
+        return RoleOutput(
+            content=head + body,
+            artifact=(result.diff or None),
+            importance="high" if result.ok else "medium",
+        )
+
+    return mutation_runner
+
+
+def build_codex_deepseek_adapters(
+    *, repo: Path, mutate: str = "off",
+) -> tuple[TeamAdapterProfile, RoleAdapter | None]:
+    """Build the real role adapters plus an optional mutation runner.
+
+    ``mutate``: ``off`` (no file changes — handoff only), ``dry`` (compute the patch
+    diff, write nothing), or ``apply`` (write with backup + rollback)."""
     codex = CodexCliTextAdapter(repo=repo)
     deepseek = DeepSeekTextAdapter()
-    return TeamAdapterProfile(
+    profile = TeamAdapterProfile(
         planner=codex.planner,
         implementer=deepseek.implementer,
         reviewer=codex.reviewer,
         evaluator=local_handoff_evaluator,
     )
+    runner: RoleAdapter | None = None
+    if mutate == "dry":
+        runner = make_mutation_runner(repo=repo, dry_run=True)
+    elif mutate == "apply":
+        runner = make_mutation_runner(repo=repo, dry_run=False)
+    return profile, runner
 
 
 def local_handoff_evaluator(context: TeamKernelContext) -> EvaluationResult:

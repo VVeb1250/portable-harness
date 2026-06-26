@@ -32,7 +32,11 @@ from paw.semantic_router import default_semantic_scorer
 from paw.skill_graph import default_skill_graph_path, load_skill_graph
 from paw.skill_router import default_skill_roots, discover_skills, suggest_skill
 from paw.sets.loader import SetsError, get_set, load_all
-from paw.team_adapters import AdapterError, build_codex_deepseek_adapters
+from paw.team_adapters import (
+    AdapterError,
+    build_codex_deepseek_adapters,
+    make_mutation_runner,
+)
 from paw.team_kernel import EvaluationResult, RoleOutput, TeamKernel, TeamKernelContext
 
 
@@ -230,16 +234,27 @@ def _team(args: argparse.Namespace) -> int:
     if adapter_profile == "mock":
         planner = _mock_planner
         implementer = _mock_implementer
-        mutation_runner = _mock_mutation_runner
         reviewer = _mock_reviewer
         evaluator = _mock_evaluator
+        # mutation is member-agnostic: it applies whatever SEARCH/REPLACE handoff the
+        # implementer wrote, regardless of which model produced it. mutate=off keeps
+        # the deterministic mock artifact for smoke; dry/apply runs the real applier.
+        mutation_runner = _mock_mutation_runner
     else:
-        adapters = build_codex_deepseek_adapters(repo=Path.cwd())
+        adapters, _ = build_codex_deepseek_adapters(repo=Path.cwd())
         planner = adapters.planner
         implementer = adapters.implementer
-        mutation_runner = None
         reviewer = adapters.reviewer
         evaluator = adapters.evaluator
+        mutation_runner = None
+
+    # --mutate is decoupled from the adapter profile so any team composition
+    # (mock today; codex-deepseek; a future claude+deepseek) gets real patch
+    # application from one switch. dry = compute diff only; apply = write+backup.
+    if args.mutate in ("dry", "apply"):
+        mutation_runner = make_mutation_runner(
+            repo=Path.cwd(), dry_run=args.mutate == "dry",
+        )
 
     try:
         result = TeamKernel(
@@ -573,6 +588,13 @@ def main(argv: list[str] | None = None) -> int:
         help="role adapter profile; codex-deepseek may call external tools/APIs",
     )
     team_run.add_argument("--mock", action="store_true", help="alias for --adapters mock")
+    team_run.add_argument(
+        "--mutate",
+        choices=("off", "dry", "apply"),
+        default="off",
+        help="apply implementer SEARCH/REPLACE edits to the cwd tree: off (handoff "
+        "only), dry (compute diff, write nothing), apply (write with backup+rollback)",
+    )
     team_run.add_argument("--db", help="ICM SQLite path; omit to use configured memory")
     team_run.add_argument("--json", action="store_true")
 

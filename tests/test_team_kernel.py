@@ -341,6 +341,31 @@ class TeamKernelCliIntegrationTests(unittest.TestCase):
             )
             self.assertIn("mock-patch-1.diff", payload["artifacts"])
 
+    def test_cli_mutate_flag_decoupled_from_profile(self) -> None:
+        # --mutate is profile-agnostic: on the mock profile, --mutate dry must run
+        # the REAL applier (mock implementer emits prose → noop), NOT the mock
+        # artifact. Proves any composition can opt into real patch application.
+        with tempfile.TemporaryDirectory() as directory:
+            database = str(Path(directory) / "mutate.db")
+            run = subprocess.run(
+                [
+                    sys.executable, "-m", "paw", "team", "run",
+                    "Refactor parser safely.",
+                    "--project", "portable-harness", "--run-id", "cli-mutate",
+                    "--complexity", "complex", "--risk", "medium",
+                    "--sensitivity", "public", "--mock", "--mutate", "dry",
+                    "--db", database, "--json",
+                ],
+                check=False, capture_output=True, text=True,
+            )
+            self.assertEqual(run.returncode, 0, run.stderr)
+            payload = json.loads(run.stdout)
+            self.assertEqual(payload["status"], "success")
+            mutator = [e for e in payload["entries"] if e["role"] == "mutator"]
+            self.assertEqual(len(mutator), 1)
+            self.assertIn("mutation", mutator[0]["content"])
+            self.assertNotIn("mock-patch-1.diff", payload["artifacts"])
+
     def test_cli_codex_deepseek_profile_is_wired_without_claude(self) -> None:
         from paw import __main__ as paw_main
 
@@ -359,13 +384,16 @@ class TeamKernelCliIntegrationTests(unittest.TestCase):
         def evaluator(context: TeamKernelContext) -> EvaluationResult:
             return EvaluationResult(passed=True, summary="local handoff ok")
 
-        def build_profile(*, repo: Path) -> TeamAdapterProfile:
+        def build_profile(*, repo: Path, mutate: str = "off"):
             built_repos.append(repo)
-            return TeamAdapterProfile(
-                planner=planner,
-                implementer=implementer,
-                reviewer=reviewer,
-                evaluator=evaluator,
+            return (
+                TeamAdapterProfile(
+                    planner=planner,
+                    implementer=implementer,
+                    reviewer=reviewer,
+                    evaluator=evaluator,
+                ),
+                None,
             )
 
         with (
@@ -412,7 +440,7 @@ class TeamKernelCliIntegrationTests(unittest.TestCase):
     def test_cli_blocks_codex_deepseek_for_restricted_work_before_adapter_build(self) -> None:
         from paw import __main__ as paw_main
 
-        def forbidden_build(*, repo: Path) -> TeamAdapterProfile:
+        def forbidden_build(*, repo: Path, mutate: str = "off") -> TeamAdapterProfile:
             self.fail("restricted work must not build an external DeepSeek adapter")
 
         with patch.object(paw_main, "build_codex_deepseek_adapters", forbidden_build):
@@ -448,7 +476,7 @@ class TeamKernelCliIntegrationTests(unittest.TestCase):
     def test_cli_blocks_codex_deepseek_when_route_is_not_codex_deepseek_team(self) -> None:
         from paw import __main__ as paw_main
 
-        def forbidden_build(*, repo: Path) -> TeamAdapterProfile:
+        def forbidden_build(*, repo: Path, mutate: str = "off") -> TeamAdapterProfile:
             self.fail("route mismatch must block before adapter build")
 
         with patch.object(paw_main, "build_codex_deepseek_adapters", forbidden_build):

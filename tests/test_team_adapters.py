@@ -146,11 +146,17 @@ class TeamAdapterTests(unittest.TestCase):
 
     def test_codex_deepseek_profile_keeps_claude_out_of_default_runtime(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            adapters = build_codex_deepseek_adapters(repo=Path(directory))
+            adapters, mutation_runner = build_codex_deepseek_adapters(repo=Path(directory))
 
         self.assertEqual(adapters.planner.__self__.__class__, CodexCliTextAdapter)
         self.assertEqual(adapters.reviewer.__self__.__class__, CodexCliTextAdapter)
         self.assertEqual(adapters.implementer.__self__.__class__, DeepSeekTextAdapter)
+        self.assertIsNone(mutation_runner)  # default mutate=off → no file changes
+
+    def test_mutate_dry_returns_a_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            _, runner = build_codex_deepseek_adapters(repo=Path(directory), mutate="dry")
+        self.assertIsNotNone(runner)
 
 
 if __name__ == "__main__":
