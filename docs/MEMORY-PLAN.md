@@ -51,9 +51,15 @@ buffer / blackboard               ICM (experiential)                    skills (
    auto-write a skill from an unvalidated lesson — skills are higher authority).
 5. **Cross-link = defer traversal, populate `related_ids`** opportunistically
    during curation (data ready if graph is added later; flat recall is the 80%).
-6. **Reflection engine = host-uniform dedicated model** (e.g. DeepSeek via API)
-   so lesson quality does not vary by which host ran the session — **confirm by
-   bench** vs each host's live agent. Avoids the nested-`claude` footgun.
+6. **Reflection engine — heuristic default, LLM as an optional silent-bug pass
+   (hybrid).** *Updated by Phase-4 bench (`bench/_reflection_ab.py`), superseding
+   the original "host-uniform dedicated DeepSeek" call.* On the gold set both
+   arms scored F1≈0.86, but the heuristic is free/instant (0.16ms, $0) while
+   DeepSeek costs ~2.1s + ~$0.00025/session and only **shifts** the error profile
+   (catches silent bugs the `is_error` heuristic is blind to, but drops terse user
+   corrections). So: keep the heuristic as the always-on capture, add a dedicated
+   LLM (DeepSeek, host-uniform — avoids the nested-`claude` footgun) ONLY as a
+   second pass for the silent-bug class. Re-bench with more fixtures before lock.
 7. **CLI floor before hook** — `paw recall` / `paw reflect` work on any host
    (pull); push (UserPromptSubmit) + capture (Stop) hooks are enhancements on
    hook-capable hosts (CC, Codex). Other (API-call) hosts: deferred, CLI-only.
@@ -112,7 +118,7 @@ classifies + extracts the real lesson + discards false positives.
 | 6 | migrate 46 `~/.paw/.../lessons.jsonl` → ICM (filter recurrence>1, drop raw-cmd noise); retire `~/.paw` overlay + dead mistake-learning stop-hook; fix CLAUDE.md single-source claim | hook = manual |
 | 2 | **DONE (code+CLI; Stop-hook shim pending)** `paw/reflection.py` + `paw reflect --capture [--transcript] [--dry-run]` (reads Stop-hook stdin `{transcript_path,session_id}` else). Multi-signal scan → ICM `pending` topic + `type:` guess. **Noise control (owner's worry) — structural filters:** skip `is_error` that is permission-denial / `nah` guard (`_NON_ERROR`); skip `isCompactSummary`/`isMeta` turns; misalignment requires terse turn (≤240c) + strong marker only. Real-transcript validation: 5 raw → 1 after filters (4 FPs killed). `pending` excluded from `paw recall`. **Incremental capture:** CC Stop fires once per turn, so capture resumes from a per-session watermark (`~/.paw/state/reflect/<sid>.json`) — only new lines scanned, no cross-turn dup flood (`--full` forces rescan; dry-run never advances). Live-proven: run1 stores 1, run2 stores 0. | Stop-hook shim = manual |
 | 3 | **DONE (engine+CLI; SessionStart shim pending)** `paw/curate.py` + `paw curate [--surface][--dry-run][--limit]`. Reconciles each pending vs `paw recall` top-K by Jaccard over summaries: **ADD** (no near-dup → store `mistakes`, seen:1, drops signal:/session:) · **BUMP** (Jaccard≥0.5 → increment existing `seen:N`, escalate seen≥3→critical, never downgrade) · **SKIP** (apply error). Drains pending (forget) on success. UPDATE-merge + DELETE deferred to Phase-4 LLM (heuristic text-rewrite = unsafe); `related_ids` deferred (no CLI flag). `--surface` = quiet-when-empty preview for SessionStart. Live-proven on canaries: j=0.90 bump (seen→2, medium→high) + add, pending drained, ICM restored. 16 curate tests, 138 total green. | SessionStart shim = manual |
-| 4 | bench reflection engine — arms: heuristic / DeepSeek-dedicated / live-CC / live-Codex; metrics: token, latency, $, lesson precision/recall vs gold, noise rate, **cross-host quality variance** | — |
+| 4 | **DONE (scaffold + first signal; needs more fixtures)** `bench/_reflection_ab.py` — heuristic vs DeepSeek arms on a synthetic gold transcript (paraphrase-fair natural markers; 3 explicit mistakes + 1 silent-bug + 4 distractors). Result: both F1≈0.86 P=1.0 R=0.75, but heuristic 0.16ms/$0 vs DeepSeek 2141ms/$0.00025 and a **different miss** (heuristic blind to silent-bug; DeepSeek drops terse user correction). Verdict → decision #6 updated: heuristic default + LLM silent-bug pass (hybrid); pure-LLM not worth per-session cost. 6 bench-scoring tests. live-CC/live-Codex arms + multi-fixture stability = TODO. | — |
 | 5 | suggest-graduate (`seen:N≥thr` + procedural-shape → flag candidate skill); periodic `icm consolidate` **⚠️ only with `--keep-originals` AND `--summarizer-provider <llm>`** (bare/provider=none JOINS the whole topic into one ' \| ' blob and DELETES originals — lossy, not summarization) | — |
 
 ## Open risks
