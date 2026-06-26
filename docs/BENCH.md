@@ -110,23 +110,41 @@ python -m headroom.evals suite --tier 1   # GSM8K + TruthfulQA + workload tokens
 
 **instruments READY:** ccusage 20.0.14 ✓ · icm.exe located (PATH fix = เพิ่ม `%LOCALAPPDATA%\icm\bin`) ✓ · tiktoken 0.13.0 ✓.
 
-**ยัง vibes / open:** (1) full-session ccusage NET — contamination ยังไม่แก้ → **DEPRIORITIZED** (deterministic proxy แทนได้). (2) headroom stack-marginal §2a — headroom-ai 0.24.0 installable (A-09) ยังไม่รัน. (3) codegraph lane — ต้อง build index; prior proxy 06-08: callers/impact ~97% less, show-1-file 4.8x worse. (4) memory quality (LongMemEval).
+**ยัง vibes / open:** (1) full-session ccusage NET — contamination ยังไม่แก้ → **DEPRIORITIZED** (deterministic proxy แทนได้). (2) codegraph lane — ต้อง build index; prior proxy 06-08: callers/impact ~97% less, show-1-file 4.8x worse. (3) memory quality (LongMemEval).
 
 ### 2a. **stack-marginal** (คำถามใหม่จาก Headroom)
 
 Headroom เสริม RTK ไม่ใช่แทน → วัด **marginal NET ของการเพิ่ม layer 2**:
 
-| arm | token (5-task suite) | accuracy | NET |
+| arm | token (6 saved tool-output fixtures) | accuracy | NET |
 |---|---|---|---|
-| OFF (baseline) | | | — |
-| RTK only | (per-cmd 85-91% / mixed 19.8% — Phase-1) | | |
-| Headroom only | **BLOCKED** | | |
-| **RTK + Headroom** | **BLOCKED** | | |
+| OFF (baseline) | 2,732 | verbatim | — |
+| RTK only | 1,406 (**-48.5%**) | verbatim/RTK-shaped | winner for normal shell path |
+| Headroom core only | 2,732 (**0%**) | verbatim fail-open | Kompress dependency missing → passthrough |
+| Headroom `[proxy]` only | 1,714 (**-37.3%**) | sentinels held | slower than RTK on this mix |
+| **RTK + Headroom `[proxy]`** | 1,080 (**-60.5%**) | sentinels held | **+23.2% marginal** after RTK, but 0.3–1.8s per compressed fixture |
 
-> **§2a BLOCKED 2026-06-22:** headroom lane ลงไม่ได้บนเครื่องนี้ — `headroom-ai` 0.24.0 = mixed python/rust (maturin), build ตายที่ `link.exe failed: exit 1` (MSVC C++ Build Tools/Win SDK prereq หาย, py3.14.4). A-09 "VERIFIED/no-compiler" = ผิด, แก้แล้ว (STATUS §4b). headroom = optional +12% rung → ไม่คุ้มลง VS Build Tools (GB). recheck = prebuilt wheel / py≤3.13 / ตั้งใจลง MSVC.
+**§2a CLOSED 2026-06-24** — runner: `bench/_headroom_stack_ab.py`, Headroom
+`0.27.0`, Linux Docker because current PyPI has no Windows wheel. Same saved
+raw/RTK outputs, cl100k token proxy, 3 warm runs, exact semantic sentinels.
+
+- **SmartCrusher home turf:** 500-row JSON 19,038→11,056 tok (**-41.9%**),
+  11–26ms, all critical sentinels held. This is the useful deterministic rung.
+- **Full Kompress/proxy:** 600-line build log 12,611→5,781 (**-54.2%**) but
+  ~11.9s median in the CPU-only container. Source/search/code were 0–0.1%.
+- **Packaging gate:** `0.27.0` installs on Linux; Windows falls back to maturin
+  and fails without MSVC `link.exe`. Native Windows wheel is still open upstream.
+- **Operational gate:** `headroom wrap codex` rewrites global provider/base URL
+  and can add an MCP server. That collides with paw's preserve-user-config rule,
+  ≤3 MCP ceiling, and Codex Desktop provider-scoped thread visibility.
+- **Decision:** do **not** adopt global proxy/wrap/MCP or Headroom memory by
+  default. Keep RTK as L1, context-mode as avoid-the-dump/search lane, ICM as
+  memory. Consider Headroom SmartCrusher only as an optional L2 adapter for
+  large JSON/API/DB outputs; require `HEADROOM_TELEMETRY=off`, no auto-apply,
+  and a native-wheel/container deployment.
 
 - prior art: [`sgaabdu4/claude-code-tips`](https://github.com/sgaabdu4/claude-code-tips) stack จริง (`headroom wrap claude` + rtk PreToolUse Bash) → **ศึกษา hook map ก่อน wire เอง**.
-- decision: stack เฉพาะถ้า marginal NET(layer2) > added complexity/latency (local HF model).
+- decision: stack เฉพาะ JSON-heavy workload ที่ marginal NET > added complexity/latency; normal coding shell path ไม่ stack.
 - **accuracy guard:** ทุก arm ต้อง hold task-success. Headroom เคลม GSM8K Δ0 / TruthfulQA +0.03 — verify บน task เรา (lossy + retrieve round-trip อาจกระทบงานจริง).
 
 ## 3. Phase 2 — memory (ICM · MemPalace · Supermemory)

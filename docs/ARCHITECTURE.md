@@ -1,7 +1,7 @@
 # Portable Harness — Architecture & Design
 
 > สถานะ: **runtime spine started** · **UPDATED 2026-06-25**. Router v0 and ICM blackboard v1 are implemented; Team Kernel and installer write path remain.
-> mindset: [../CLAUDE.md](../CLAUDE.md) · L0 brain detail: [./SHARED-BRAIN.md](./SHARED-BRAIN.md)
+> mindset: [../CLAUDE.md](../CLAUDE.md) · L0 brain detail: [./SHARED-BRAIN.md](./SHARED-BRAIN.md) · self-improving-harness papers (phase-2): [./RESEARCH-RADAR.md](./RESEARCH-RADAR.md)
 
 ---
 

@@ -1,6 +1,6 @@
 # STATUS — session state (compact-survival)
 
-> อัพเดท: 2026-06-25 · state ก้อนเดียวให้ session หลัง-compact resume ได้ครบ. **resume: อ่าน §0 (current truth) → §F (next) ก่อน.**
+> อัพเดท: 2026-06-26 · state ก้อนเดียวให้ session หลัง-compact resume ได้ครบ. **resume: อ่าน §0 (current truth) → §F (next) ก่อน.**
 > Doc map: [CLAUDE.md](../CLAUDE.md) mindset+routing · [ARCHITECTURE.md](./ARCHITECTURE.md) blueprint · [SHARED-BRAIN.md](./SHARED-BRAIN.md) L0 · [BENCH.md](./BENCH.md) bench detail · **STATUS.md (นี่)** = current truth.
 > ⚠️ ประวัติ handoff ละเอียด §1-16 (pre-pivot harness framing → ECC collision → fork → context-mode adopt → swe-probe round 1) = **condensed ลงนี่แล้ว**; กู้เต็มได้ที่ git ก่อน commit `71a2815`.
 
@@ -11,8 +11,10 @@
 - **economics gate ผ่าน:** frozen SymPy N=8 = `team3 5/8 > codex-solo 4/8 > claude-solo 2/6 ≈ deepseek-solo 2/8`. Canonical manifest: `bench/swe_probe/FROZEN_N8_2026-06-25.json`; verify with `python bench/swe_probe/verify_freeze.py`.
 - **router live:** `python -m paw route` — deterministic complexity/risk/privacy/budget/fallback policy + JSON contract; 14 tests, 91.3% statement coverage.
 - **shared blackboard live:** `python -m paw blackboard write/read` — ICM topic `<project>/blackboard/<run-id>`, versioned/bounded/secret-safe; real isolated ICM SQLite round-trip passes.
+- **Team Kernel v0 runtime + CLI live:** `paw.team_kernel.TeamKernel` executes RouteDecision-shaped Planner → Implementer → Reviewer → evaluator/stop loops with bounded retries and blackboard handoffs. `python -m paw team run ... --mock --db <isolated.db>` proves real ICM write/read transport. `--adapters codex-deepseek` wires Codex read-only plan/review + DeepSeek implementer handoff; it is explicit, route-guarded, and blocked for `--sensitivity restricted`.
 - **portable claim:** decision + data protocol portable; execution and enforcement remain host-tiered. Do not claim uniform hooks/security.
-- **next:** build Team Kernel vertical slice: RouteDecision → Planner → Implementer → Reviewer → evaluator/stop, using ICM blackboard handoffs.
+- **release posture:** alpha/internal-beta only. README quickstart exists, but full public release still needs mutation/evaluation automation, cross-platform CI, and release docs.
+- **next:** add mutation/evaluation layer for Team Kernel outputs: apply/search-replace or patch artifacts, run focused verification, and feed failures back without importing the frozen benchmark cohort.
 - **benchmark is frozen:** do not append to the N=8 cohort. New repo/model/N requires a new dated cohort and manifest.
 
 ---
@@ -57,10 +59,25 @@
 - **rtk** — token-cut Bash-hook (global). บีบ git ดี แต่ workload นี้ rtk-able แค่ ~0.8% (Read 62% ครอง).
 - **nah 0.9.1** — security guard PreToolUse (BLOCK curl|bash · ASK dual-use/rm-rf · ALLOW git_safe). dual-use→ASK ห้าม loosen.
 - **context-mode MCP** (project-scoped `.mcp.json`, ELv2 local-first) — ctx_* 11 tools, +7.9k tok/session repo นี้. routing nudge block ใน CLAUDE.md. **gate = folded (§D).**
-- **paw router + blackboard** — route decision and shared-state CLIs live; total test suite 23.
+- **paw router + blackboard + team kernel** — route decision, shared-state, Team Kernel mock-smoke, and explicit Codex/DeepSeek adapter profile live. External adapter privacy guard blocks restricted/mismatched routes. Contract tests: 35 across router/blackboard/kernel/adapters.
 - **swe-probe** `bench/swe_probe/` — frozen SymPy N=8 evidence; verifier runs without paid arms.
 - WSL Ubuntu + swebench + Docker Desktop (flask env-image cached, eval ~1-2min). `$env:DEEPSEEK_API_KEY` set. ccusage 20.0.14 · tiktoken 0.13.0 · iii.exe PATH.
-- **GateGuard hook** = ECC, fact-forcing บน Bash/Edit/Write (fires ทุก op session นี้). disable = `ECC_GATEGUARD=off`.
+- **ECC plugin hooks** = 24 hooks (node-spawn ทุก tool-call, CC-locked). **DECISION 2026-06-25: `ECC_HOOK_PROFILE=minimal`** set ใน `~/.claude/settings.json` `env` (มีผล session หน้า). minimal = ตัด tier `standard` (gateguard fact-force, ecc-context-monitor cost-warning, quality-gate, console/design/doc warnings, suggest-compact) เก็บเฉพาะ minimal-tier (observe/metrics/cost-tracker/session-end = เงียบ, feed ICM). knob อื่น: `ECC_DISABLED_HOOKS=id,id` (surgical) · `ECC_GATEGUARD=off` (gate ตัวเดียว).
+
+### ECC hook → harness mapping (ไม่ port — ส่วนใหญ่ harness มี cross-host แล้ว)
+
+> เหตุผล: ECC hook = node-spawn/tool-call (per-turn tax, ขัด #7) + CC-locked (ขัด #8). ~80% ซ้ำของเดิม. **author-once-per-host idiom (rtk/nah/ICM pattern) > copy ECC bundle.**
+
+| ECC hook | harness equivalent (cross-host) | verdict |
+|---|---|---|
+| config-protection · governance-capture | **nah** (BLOCK/ASK) + secure-agent (gitleaks/osv) | harness แข็งกว่า → skip |
+| quality-gate · format-typecheck (Biome/tsc) | **ruff/mypy CLI** (0-tax, python) | skip (node→CLI) |
+| cost-tracker · ecc-context-monitor | **ccusage + bench/** | skip (ECC cost=CC-only) |
+| observe · evaluate-session · metrics-bridge | **ICM** (18-host learning, adopt-all bridge LIVE) | **keep ECC ON** (minimal เก็บไว้) = bridge เดียวที่ net-positive |
+| session-start/end ctx | ICM session-hook + context-mode SessionStart | skip |
+| console-warn · design-quality-check · doc-file-warning · desktop-notify | — (JS/frontend/macOS, irrelevant repo python) | skip |
+
+**Residual (harness ยังไม่มี, gate ก่อนทำ):** (1) gateguard "investigate-before-mutate" — overlap mindset #9, low ROI; ถ้าเอา = gate เฉพาะ code-file load-bearing (ข้าม md/memory), opt-in. (2) scope-creep/tool-loop detector — signal มีค่าแต่ threshold+cross-host ยาก. **ทำเป็น per-host thin-hook ตาม enforce-tier (A=CC hook · B=Gemini init · C=Codex AGENTS.md) เท่านั้น ห้าม copy ECC node-bundle.** A2 gate: พิสูจน์ว่าขาดจริงก่อน polish.
 
 ## D. HISTORICAL BENCH LOG — frozen; canonical truth is §0 + manifest
 
@@ -107,12 +124,14 @@
 
 **Current ordered next work:**
 
-1. Team Kernel v0: execute `RouteDecision` through Planner → Implementer → Reviewer → evaluator with bounded retries and explicit stop conditions.
-2. Use ICM blackboard for real plan/review/result handoffs; artifacts stay in files and memory stores references/summaries only.
-3. Lift Codex/DeepSeek adapter contracts from `swe_probe` without importing the frozen benchmark cohort into runtime code.
-4. Add Linux/macOS CI for router + blackboard; Windows is already live.
-5. Implement `paw link/verify/unlink` after the Team Kernel contract settles.
-6. Optional later benchmark work must use a new dated cohort.
+1. ~~Team Kernel v0 contract~~ **DONE 2026-06-26** — `paw.team_kernel.TeamKernel` runs Planner → Implementer → Reviewer → evaluator/stop with bounded retries, review-gated evaluation, explicit stop reasons, and blackboard handoffs. Adapter-injected only; no real agent launcher yet.
+2. ~~Team Kernel CLI + isolated ICM smoke~~ **DONE 2026-06-26** — `python -m paw team run <task> --project <p> --run-id <r> --mock --db <isolated.db> --json` writes/reads real `<project>/blackboard/<run-id>` entries.
+3. ~~Lift Codex/DeepSeek adapter contracts from `swe_probe`~~ **DONE 2026-06-26** — `paw.team_adapters` has Codex read-only CLI planner/reviewer (`codex exec --json -o`) and DeepSeek Anthropic-compatible implementer (`/v1/messages`, `$DEEPSEEK_API_KEY`). Claude is intentionally not in the default runtime path; keep it as optional benchmark/comparison only.
+4. ~~Privacy guard + alpha quickstart~~ **DONE 2026-06-26** — `codex-deepseek` is blocked for restricted work and route mismatch before adapter construction; README documents mock smoke, real adapter env, and host-tiered caveats.
+5. Add mutation/evaluation layer: convert implementer handoff into patch/artifact application, run focused verification, and feed failures back into reviewer/implementer retries.
+6. Add Linux/macOS CI for router + blackboard + Team Kernel; Windows is already live.
+7. Implement `paw link/verify/unlink` after the Team Kernel contract settles.
+8. Optional later benchmark work must use a new dated cohort.
 
 > Everything below in §F is a historical backlog retained for provenance; do not resume it over the ordered list above.
 
@@ -135,7 +154,8 @@
 - **API-equiv pricing (cost-axis $, load-bearing, verified 2026-06-24):** `config.PRICING` per-1M = Claude Opus 4.8 std **$5/$25** · gpt-5-codex **$1.25/$10** · DeepSeek v4-flash **$0.14/$0.28**. ใช้ตี opportunity-cost ของ sub seat (marginal จริง=$0) ให้สกุลเดียว. ⚠️ codex model version ไม่ชัด (5.2/5.3 = $1.75/$14 → codex แพงขึ้น) · cached-input ไม่หักส่วนลด (upper bound) · Claude tiktoken = floor. recheck on price/model-version change. [src: platform.claude.com/docs pricing · help.openai.com/articles/20001106 codex rate-card]
 - **context-mode ELv2:** ใช้/fork personal ฟรี; ห้าม hosted-service คู่แข่ง; license-key clause ยังไม่ active → recheck on version bump. bus-factor 1 (solo) → mitigant fork free-state.
 - **ECC:** affaan-m/ECC ทำ harness layer 90% overlap (mature, user รันอยู่) → paw redundant as standalone harness; defensible = semantic-mem + measurement + team-axis. recheck if ECC adds vector memory.
-- **agentmemory:** ceiling > ICM (LongMemEval R@5 95.2%) แต่ Windows out-of-box bm25-only (semantic dormant) → ICM ชนะ convenient. head-to-head full-mode = deferred.
+- **agentmemory (rohitg00 / `@agentmemory/agentmemory`):** RE-VETTED 2026-06-26 — old "bm25-only" note STALE. now ships local MiniLM + hybrid BM25+vector+graph RRF, built-in 12-hook auto-capture+LLM-compress, 1423 tests, 24k★, v0.9.27. ceiling 95.2% R@5. **NOT adopted — durable reason = daemon-centric** (iii-engine + ports 3111/3113/49134, no one-shot CLI recall) ชน lean/stateless/portable thesis. its one win (auto-capture) rebuildable on ICM cheaper. recheck → multi-agent team (concurrent shared live mem) flips it. full plan: [[docs/MEMORY-PLAN.md]].
+- **MEMORY PLAN locked 2026-06-26** → `docs/MEMORY-PLAN.md`. keep ICM (struct verified, maps to Mem0 ADD/UPDATE/DELETE/NOOP). behavioral layer = the real work: reflection-pass (episodic→semantic distill, host-uniform dedicated model TBB), push+pull recall (`paw recall` CLI floor + paw_block push, LIVE), Stop-capture→`pending`→SessionStart-curate, suggest-graduate to skills. **Phase 0 done:** CC Stop has `transcript_path` (JSONL parseable); **Codex Stop/SessionStart ALSO dead portaw** (`portaw memory capture/session-hook`) — migration gap both hosts; Codex transcript schema TBV. seq: 0→1→6(migrate 46 stranded lessons+retire ~/.paw+fix CLAUDE.md lie)→2→3→4(bench)→5.
 - **headroom-ai 0.27.0:** §BENCH 2a CLOSED. Windows ยัง BLOCKED เพราะไม่มี
   wheel (Python 3.12/3.14 ต่าง fallback maturin → `link.exe` fail); Linux Docker
   รันได้. SmartCrusher JSON -41.9% ที่ 11–26ms/semantic sentinels held.
@@ -147,7 +167,12 @@
 ## H. implementation state
 
 - repo `E:\portable-harness` (git). port-a-whip เก่า `~/.claude/port-a-whip` = source สำหรับ salvage write-path (patcher/healthcheck/install/runner/state).
-- `paw sets list/show` ✓ (8 sets) · `paw route` ✓ · `paw blackboard write/read` ✓. write-path `link/verify/unlink` ยังไม่ port.
+- `paw sets list/show` ✓ (**14 sets**) · `paw route` ✓ · `paw blackboard write/read` ✓.
+- **write-path LANDED (slice-0, 2026-06-26):** `paw plan|apply|verify|remove <set>` ✓ end-to-end for **10 CLI-only sets** (secure-agent · design-quality · browser-automation · data-query · doc-extract · harness-foundation · repo-pack · test-affected · quality-gate · api-quality). drift-guard + backup + `.paw/state.json` ledger + reversible remove, all live-proven (`paw apply repo-pack`→inject+backup, verify=healthy, remove→original). **binary resolution = PATH → vendored `bin/` → MISSING+OS-install-cmd** (`resolve_binary`/`install_command`); vendored `bin/code2prompt.exe` 4.2.0 resolves healthy. injected block carries usage+install lines. 63 tests green.
+- **slice-1 LANDED (MCP merge, JSON hosts, 2026-06-26):** all **14 sets plan OK on claude-code**. MCP wiring merges into project-local `.mcp.json` (CC) / `.gemini/settings.json` (Gemini) via stdlib json — `merge_mcp_servers`/`remove_mcp_servers` (idempotent, preserves sibling servers, ledger `mcp_wiring.prior` for precise reverse). **host_anchor honored** (efficiency-starter → codegraph on CC, semble on gemini; XOR enforced, only wired tool's binary detected). **N1 ceiling warn** when union >3. live-proven: context-quality merge context7 beside `keep-me` → verify healthy → remove restores. binary detection now covers MCP tools (codegraph/uvx/context-mode). 77 tests green.
+- **slice-1b LANDED (Codex TOML MCP, 2026-06-26):** MCP sets wire on `--host codex` now. Comment-preserving merge into `.codex/config.toml` `[mcp_servers.<name>]` via **tomlkit** (`_merge_mcp_toml`/`_remove_mcp_toml`); format-aware dispatch by suffix (`mcpServers` JSON ⇄ `mcp_servers` TOML). live-proven: context-quality → `[mcp_servers.context7]`+nested `.env` added, **header+inline comments + github stub preserved**, verify healthy, remove restores. semble anchor picked on codex (XOR). N1 excludes `enabled=false` stubs. TOML never unlinks file (holds user state). guard: tomlkit absent → BLOCK "install port-a-whip[cli]". 82 tests green. **linker MCP now complete on all 3 hosts (CC/gemini JSON + codex TOML).**
+- **router cross-host FIXED (2026-06-26, env wiring not repo):** Codex `~/.codex/config.toml` UserPromptSubmit hook repointed from dead `portaw router run --host codex` → `py "~/.claude/hooks/skill-router.py"` (same paw.skill_router engine as CC; script already scans `~/.codex/skills`+ECC). Codex re-trusted new hash. **both hosts now run one router engine.** memory/sets surfacing bridge REBUILT in repo: **`paw/router_block.py`** `paw_block(prompt,cwd,session_id)` — (1) curated-set match by trigger_terms (lexical, 0 subprocess, floor 2.0, `· paw apply <set>` verb), (2) ICM mistake recall gated by **keyword-overlap + importance∈{high,critical}** (ICM has no score cutoff → local post-filter kills noise; verified stays silent on non-overlapping lessons). fail-silent → '' (hook never breaks). 9 tests. **⚠️ MANUAL STEP (nah blocks me editing hooks):** change `~/.claude/hooks/skill-router.py` line ~151 import `portaw.adapters.router` → `paw.router_block`. paw importable under bare `py` (editable). one script shared by CC+Codex → fixes both. After edit: 🐾 sets + 🧠 memory auto-surface live again on both hosts.
+- **PATH wiring (2026-06-26):** `apply` of a set with a vendored `bin/` binary prepends `bin/` to PATH in machine-local `.claude/settings.local.json` (gitignored → repo stays portable; CC `env` is literal/no-expand so a full PATH snapshot is written), reversible via ledger. lets vendored tools run by bare name in CC Bash subprocesses. ⚠️ snapshot can age (new tool dirs added later not seen) — local + reversible, acceptable.
 - router: 14 tests / 91.3% statement coverage. blackboard: real isolated ICM integration; full suite 23 tests.
 - G5 locked: salvage portaw subtree staged (patcher = comment-preserving TOML + `_guard_unchanged` race-safe, lift verbatim ตอน MCP-set แรก; thin-rewrite REJECTED). MVP `link secure-agent` (0-MCP) = agents_md+runner+install+healthcheck+state+router-wiring.
 - ติด `ECC adopt-all` (memory note 2026-06-24): ECC plugin = harness base, paw = residual overlay. ctx-mode compliance + prune/ROP/codex-migrate = pending ที่ note นั้น.

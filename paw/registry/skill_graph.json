@@ -1,0 +1,152 @@
+{
+  "schema": "paw-skill-graph/v1",
+  "nodes": [
+    {
+      "id": "intent:agent-routing",
+      "kind": "intent",
+      "text": "Design or improve an AI agent harness, skill router, tool routing, action space, observation format, task-state routing, progressive skill loading, or context-efficient PUSH and PULL capability discovery."
+    },
+    {
+      "id": "intent:skill-authoring",
+      "kind": "intent",
+      "text": "Create, write, package, or update an agent skill with SKILL.md instructions, progressive disclosure, scripts, references, and reusable resources."
+    },
+    {
+      "id": "intent:security-review",
+      "kind": "intent",
+      "text": "Review authentication, authorization, secrets, permissions, user input, dependencies, or sensitive code for security risks."
+    },
+    {
+      "id": "intent:test-driven-change",
+      "kind": "intent",
+      "text": "Implement a feature, bug fix, or refactor with tests first, regression coverage, and verification."
+    },
+    {
+      "id": "intent:current-deep-research",
+      "kind": "intent",
+      "text": "Conduct broad current-state research across multiple primary sources, verify claims, synthesize evidence, and provide citations."
+    },
+    {
+      "id": "intent:market-competitor-research",
+      "kind": "intent",
+      "text": "Analyze a market, competitors, pricing, customer segments, industry dynamics, and commercial positioning."
+    },
+    {
+      "id": "intent:long-form-article",
+      "kind": "intent",
+      "text": "Turn notes or source material into a polished long-form article, tutorial, guide, newsletter, or technical narrative."
+    },
+    {
+      "id": "intent:browser-e2e-testing",
+      "kind": "intent",
+      "text": "Build robust browser end-to-end tests with Playwright, page flows, screenshots, CI execution, and test artifacts."
+    },
+    {
+      "id": "intent:database-migration",
+      "kind": "intent",
+      "text": "Plan and implement safe database schema or data migrations with compatibility, backfill, rollback, and zero-downtime controls."
+    },
+    {
+      "id": "intent:docker-containerization",
+      "kind": "intent",
+      "text": "Containerize applications with Docker or Docker Compose, secure images, networking, volumes, health checks, and deployment patterns."
+    },
+    {
+      "id": "intent:investor-materials",
+      "kind": "intent",
+      "text": "Create investor pitch decks, one-pagers, financial narratives, fundraising memos, accelerator applications, and startup materials."
+    }
+  ],
+  "edges": [
+    {
+      "from": "intent:agent-routing",
+      "to": "agent-harness-construction",
+      "relation": "routes_to"
+    },
+    {
+      "from": "intent:skill-authoring",
+      "to": "skill-creator",
+      "relation": "routes_to"
+    },
+    {
+      "from": "intent:skill-authoring",
+      "to": "write-a-skill",
+      "relation": "routes_to"
+    },
+    {
+      "from": "skill-creator",
+      "to": "write-a-skill",
+      "relation": "substitutes"
+    },
+    {
+      "from": "intent:security-review",
+      "to": "security-review",
+      "relation": "routes_to"
+    },
+    {
+      "from": "security-review",
+      "to": "tdd-workflow",
+      "relation": "complements"
+    },
+    {
+      "from": "intent:test-driven-change",
+      "to": "tdd-workflow",
+      "relation": "routes_to"
+    },
+    {
+      "from": "intent:test-driven-change",
+      "to": "tdd",
+      "relation": "routes_to"
+    },
+    {
+      "from": "tdd-workflow",
+      "to": "tdd",
+      "relation": "substitutes"
+    },
+    {
+      "from": "intent:current-deep-research",
+      "to": "deep-research",
+      "relation": "routes_to"
+    },
+    {
+      "from": "intent:current-deep-research",
+      "to": "research-ops",
+      "relation": "routes_to"
+    },
+    {
+      "from": "deep-research",
+      "to": "research-ops",
+      "relation": "substitutes"
+    },
+    {
+      "from": "intent:market-competitor-research",
+      "to": "market-research",
+      "relation": "routes_to"
+    },
+    {
+      "from": "intent:long-form-article",
+      "to": "article-writing",
+      "relation": "routes_to"
+    },
+    {
+      "from": "intent:browser-e2e-testing",
+      "to": "e2e-testing",
+      "relation": "routes_to"
+    },
+    {
+      "from": "intent:database-migration",
+      "to": "database-migrations",
+      "relation": "routes_to"
+    },
+    {
+      "from": "intent:docker-containerization",
+      "to": "docker-patterns",
+      "relation": "routes_to"
+    },
+    {
+      "from": "intent:investor-materials",
+      "to": "investor-materials",
+      "relation": "routes_to"
+    }
+  ]
+}

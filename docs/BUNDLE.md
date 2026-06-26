@@ -60,6 +60,8 @@ triad ครบ: lexical (grep native) / **struct (ast-grep)** / graph (codegrap
 - ✅ **complement ไม่ทับ:** codegraph(code)/context7(lib docs)/web-research(remote)/data-query(local files)/doc-extract(binary) = 5 surface แยก.
 - ✅ **repo-pack composition (2026-06-25):** code2prompt = context **producer** (subtree→token-counted prompt) ต้นน้ำ; ที่เหลือ = consumer ปลายน้ำ คนละ stage → ไม่ชน. **vs rtk** = code2prompt เป็น binary แปลกหน้า → **passthrough** (เหมือน ast-grep/duckdb; git ทับแค่ผิว: rtk=อ่าน git ad-hoc · c2p `-d`=แพ็ค PR-context) *(by-design; live rtk-probe ยังไม่รัน)*. **vs ctx-mode = synergy ไม่ใช่ overlap:** `ctx_execute` รัน `code2prompt … -O pack.md` (output 0-ctx) → `ctx_fetch_and_index` → `ctx_search` ดึงเฉพาะ slice = **context-compression แบบ routing แทน headroom** (portable, 0 compile-tax). **vs ast-grep/codegraph** = coarse(subtree) vs precise(symbol), c2p เลือกไฟล์→feed ast-grep ได้.
 - ⚠️ **MCP eager tradeoff** (codegraph XOR semble · ≤2-3). CLI sets ไม่มี tradeoff (นอกจาก nah-classify glue ข้างบน).
+- ✅ **live compat re-verify (2026-06-25, this machine, prep-real-use):** ทุก bundle CLI รันจริง + version ตรง — ast-grep 0.43.0 · duckdb 1.5.3 · jq 1.8.1 · gitleaks 8.30.1 · osv-scanner 2.3.8 · `bin/code2prompt.exe` 4.2.0. **rtk passthrough identity PROVEN** (`rtk <tool> --version` == `<tool> --version` byte-identical: ast-grep/jq/duckdb) → rtk-hook-active ไม่ mangle bundle CLI. **test-affected set (testmon 2.2.0) validated LIVE:** `pytest --testmon` baseline สร้าง `.testmondata` รัน 23/23; rerun no-change → **select 0** ("no tests ran") = AST-aware selection ทำงานจริงบน repo นี้. ⚠️ testmon = pytest **plugin** (`pytest --testmon`) ไม่ใช่ standalone binary. `.testmondata` → gitignored.
+- 🐛 **FIX (2026-06-25): bare `pytest` collection bug** — default crawl ลง `bench/swe_probe/` frozen artifacts (`test_output.txt` docstring → doctest parser ValueError "inconsistent leading whitespace") = 5 collection error. fix = `pyproject.toml [tool.pytest.ini_options]` `testpaths=["tests"]` + `norecursedirs=["bench",...]`. หลัง fix: bare `pytest` = 23 passed 0 error; `verify_freeze.py` ยัง PASS (8 instances). real-use readiness ✓.
 
 ## 5. Host matrix
 
@@ -72,15 +74,42 @@ triad ครบ: lexical (grep native) / **struct (ast-grep)** / graph (codegrap
 > ⚠️ **enforcement ไม่เท่ากันทุก host (smoke 2026-06-22, A-13):** shared brain (ICM memory + AGENTS.md) = portable จริง; แต่ **automatic guarantee (hook token-cut + nah hard-BLOCK) = Claude-only strong**, degrade → Gemini(medium) → Codex(instruction+sandbox, softer). **secure-agent บน Codex = `nah codex setup` (config approval-mode + `~/.codex/rules/nah-authority.rules` + sandbox) ไม่ใช่ hard-block** — โฆษณา guarantee ให้ตรง tier.
 
 ```powershell
-# install UX (target — reuse/port portaw installer):
-#   harness install secure-agent --host claude-code   # ลง+wire+verify ทีเดียว
-#   harness sets list                                  # ดู catalog
-# verify:
+# install UX (LANDED 2026-06-26 — slice-0 CLI + slice-1 MCP/JSON):
+#   py -m paw sets list                          # ดู catalog (14 sets)
+#   py -m paw plan  <set> --host claude-code     # preview (no mutation)
+#   py -m paw apply <set> --host claude-code     # wire (backup+ledger+drift-guard); vendored bin/→PATH
+#   py -m paw verify <set>                        # health: context/mcp/binary
+#   py -m paw remove <set>                        # reversible (paw-owned only)
+# ทุก 14 sets plan OK บน claude-code. MCP merge เข้า .mcp.json (CC)/.gemini/settings.json.
+# ⛔ slice-1b ค้าง: --host codex (TOML, ต้อง comment-preserving patcher).
+# verify (token):
 py bench/mcp_tax.py --all      # eager MCP เล็ก
 icm.exe recall "smoke" ; rtk gain
 ```
 
 ## 6. Recheck (decay triggers)
+
+### scout 2026-06-25 — new-set candidates (3 gaps probed)
+
+> reuse-don't-rebuild (#2) + landscape #3. verdict: **1 คุ้มเพิ่ม · 1 optional-gated · 1 ปฏิเสธ.** อย่าเกินนี้ (scope-creep vs economics-gate A2).
+
+- **LSP / type-aware nav — ❌ DON'T BUILD (commodity, native-absorbed).** CC v2.0.74 (Dec 2025) = LSP native 11 ภาษา · Kiro tree-sitter built-in · Qwen native LSP → platform ดูดไปแล้ว (STATUS "rent commodity"). gap เหลือแค่ **Codex/Gemini load-all host** → ถ้าจำเป็น = thin LSP-CLI (multilspy/lsp-cli) ต่อ host, ไม่ใช่ set. recheck: Codex/Gemini native-LSP coverage.
+- **test-affected — ✅ CANDIDATE (gap จริง, ตรง repo).** รัน test เฉพาะที่ diff กระทบ (faster loop, ↓token จาก log). **testmon** (pytest, coverage-dep map, mature) = pick สำหรับ repo นี้ (python) · **Tach** (git+import-graph) = alt. 0-tax CLI. **VETTED 2026-06-25 (head-to-head บน repo นี้) → ✅ PROMOTE, scope = category set ไม่ใช่ single-tool.** empirical: testmon install=1 pip 0-config · baseline 23 tests/1.13s สร้าง `.testmondata` · selection: no-change=0 ✓, comment-only=0 ✓ (**AST-aware**, ตัด non-semantic edit), real edit `_estimate_cost`=**4/14 router tests, deselect 10, exclude blackboard ทั้งหมด** @ 0.14s (**8× cut**, scale ตาม suite-size). **codegraph-affected = แพ้สำหรับงานนี้:** (a) ไม่มี `.codegraph/` index บน repo นี้เลย → ต้อง build แยกก่อน (testmon build เองใน 1 baseline) · (b) static symbol→symbol, ต้องเขียน glue map symbol-impact→test-name เอง (testmon ทำ native) · (c) miss runtime-only dep (fixture/conftest/dynamic dispatch) ที่ coverage เห็น. **= ไม่ใช่คู่แข่ง คนละแกน** (codegraph=code-intel/refactor multi-lang · testmon=test-selection runtime python). ⚠️ caveat: testmon = **python/pytest only** → set `test-affected` ต้อง **language-tiered** (python=testmon ✓validated · JS=`jest --changedSince` · go=`go test`+impact). + payoff scale ตาม suite ใหญ่ → gate adoption ที่ slow-suite repo (harness นี้เล็กไป, marginal). fit core-concept: ↓CI-time/↓test-log-token + ↑qual (red-green loop เร็ว→iterate มาก).
+- **semantic-search (4th search modality) — 🟡 CANDIDATE, portability-gated.** 2026 consensus ยืนยัน triad เรา (lexical grep / struct ast-grep / graph codegraph) = ถูก; semantic = optional 4th. **Gortex** (single-binary, BM25/FTS5 + GloVe-50d embedded 3.8MB zero-API + RRF + graph-rerank) = portable สุด · **CocoIndex Code** (AST + sentence-transformers local, "70% token save", trending) ⚠️ **torch-dep หนัก = ภาระแบบ headroom** (compile/size, ขัด portable). rule: เพิ่มได้ต่อเมื่อ **local + light (Gortex-style embedded), ห้าม torch.** ส่วนใหญ่ overlap codegraph → low-pri. **VETTED 2026-06-25 ([zzet/gortex](https://github.com/zzet/gortex)) → portability gate ✅ PASS + reframe = codegraph CHALLENGER ไม่ใช่ "4th-modality add-on".** Go single-binary · GloVe-50d baked 3.8MB · 100% local (#10 ✓) · **257 lang · multi-repo · BM25+vector+RRF+graph-centrality + impact analysis** = **superset codegraph** (codegraph=graph เดียว/single-repo). eval R@1 42.3 / R@5 55.1 / exact R@5 96.8 · cold ~200ms incremental. CocoIndex = ❌ (torch, ขัด rule). ⚠️ maturity (#4): **solo-dev (zzet), GitNexus rebrand = young/churn** → risk. **next vet = install Win binary + index repo นี้ + head-to-head vs codegraph** (replace-or-augment?). ถ้าชนะ = 2-in-1 (ลด MCP count, ตรง #7 token-budget). **HEAD-TO-HEAD DONE 2026-06-25 (v0.52.0 signed win zip → indexed repo → query) → verdict = AUGMENT-only via CLI, ❌ NOT drop-in replace, ⛔ NEVER `gortex init`.**
+  - ✅ **portability gate PASS (beats codegraph here):** signed prebuilt `gortex_windows_amd64.zip` (SHA256 ✓ + cosign .sig/.pem) 48M single binary 0-compile → `bin/gortex.exe`. index **256,328 nodes / 1,157,579 edges / 98.8% py coverage in ~93s** (daemon+track). codegraph = ยังไม่มี `.codegraph/` index บน repo นี้เลยหลายเซสชัน (ต้อง node + per-repo build).
+  - ✅ **symbol search exact** (`query symbol _estimate_cost` → `paw\router.py:278`) = par codegraph_search.
+  - ❌ **`gortex init` = INVASIVE (deal-breaker, ขัด preserve-config + North Star #2):** default เขียนทับ **CLAUDE.md + AGENTS.md** (append 29-30 บรรทัด) + สร้าง **`.claude/ .cursor/ .gemini/ .vscode/`** + ติดตั้ง **CC PreToolUse deny-hooks + per-host MCP + 20 auto-skills** โดยไม่ถาม. ต้อง revert 2 md + 4 dir. — ใช้ได้แค่ `track` manual, ห้าม init.
+  - ❌ **no ignore-by-default:** crawl `bench/swe_probe/.swebench-venv` + sympy → `query callers route` = **ambiguous** (โดน aiohttp site-packages กลบ) · auto-skills ตั้งชื่อตาม pandas-test dirs (garbage) · vector index **auto-OFF >100k texts → BM25-only** (= มีแล้วผ่าน grep/ast-grep). ต้องเขียน scoped-ignore เองก่อนใช้.
+  - ❌ **MCP surface = 100+ tools** → ถ้าโหลด eager = tax มหาศาล (vs codegraph 8/1653 tok). ปลอดภัยเฉพาะ **CLI-daemon** (always-on ~493MB RAM).
+  - **decision:** keep **codegraph** สำหรับ CC code-intel. gortex = augment-only, CLI `track` (NEVER init), mandatory scoped-ignore — ยังไม่เข้า bundle. binary เก็บ `bin/gortex.exe` (gitignored). **recheck-trigger:** init opt-in/non-invasive + ignore-by-default for vendored/venv.
+
+### scout 2026-06-25b — ↓token+↑qual axis sweep (core-concept hunt)
+
+> ค้นตรง win-condition เสา bundle (↓tok AND ↑qual พร้อมกัน = A2 "ยังไม่พิสูจน์"). **ผล: ส่วนใหญ่ยืนยัน bet เดิม; new actionable = 1 (Squeez, research→watch).**
+
+- **↓token: rtk = anchor VALIDATED (external), ไม่มี portable challenger.** sweep ยืนยัน rtk = leading portable token-cutter (Rust single-binary, 0-dep, 39.5k★, v0.38, cut 60-90%) = partial validation A-06. **LLMLingua/-2 = ❌ REJECT** (neural perplexity-compressor → torch-dep + "loss of format crucial for agent tasks → substantial perf drop"; format-lossy = ขัด quality+portable). neural prompt-compression ทั้งตระกูล = อย่าไล่.
+- **⭐ WATCH: Squeez** (arxiv 2604.04979, Apr 2026 "Task-Conditioned Tool-Output Pruning for Coding Agents") = next-gen rtk: prune tool-output **ตาม task** (rtk = static rules) → ตัด noise เฉพาะที่ task ไม่ใช้, เก็บ signal = **↓token + ↑qual พร้อมกัน** = ตอบ A2 ตรงๆ. **VETTED 2026-06-25 → code SHIPPED ✅ ([KRLabsOrg/squeez](https://github.com/KRLabsOrg/squeez), Apache-2.0): CLI + model `squeez-2b` (Qwen3.5-2B LoRA) + dataset.** perf: 0.86 recall / 0.80 F1 / **−92% input tokens** (เหนือ zero-shot 35B +11 recall). **แต่ไม่ drop-in:** engine = **2B-model inference ต่อ tool-output** → (a) gated บน local-model-runtime = **ผูก R-01 SLM gate เดียวกัน** (ยังไม่มี local SLM) · (b) hot-path 2B-infer/tool-call vs rtk's instant rust-rules = latency/cost tradeoff จริง. → **WATCH ต่อ, unblock-trigger = local SLM (รวมกับ R-01)**, ไม่ใช่ rtk-replacement วันนี้. cross-ref [RESEARCH-RADAR R-04](./RESEARCH-RADAR.md).
+- **↑quality: field-consensus 2026 = ของที่เรามีในคอนเซปต์แล้ว.** ensemble/dual-review (2 solve→3rd judge) = **team3/santa-loop** ✓ · tiered-routing cheap-local→expensive = **R-01 SLM-router** (marked) ✓ · RAG/live-doc grounding = **context7 + web-research** ✓. SaaS hallucination-detector (Patronus LYNX/Braintrust) = ❌ cloud eval-platform, ไม่ portable CLI, code ออกนอกเครื่อง (#10). residual = deterministic guardrail (ruff/mypy pre-gate) แต่ overlap ECC quality-gate skill → low-pri.
 
 - **Headroom** — **REJECTED จาก bundle 2026-06-25 (live-proof):** ลงจริงบนเครื่องนี้
   ล้มเหลวยืนยัน — `headroom-ai` ไม่มี prebuilt wheel **เลยทุก version/OS** → pip

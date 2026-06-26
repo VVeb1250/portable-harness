@@ -1,0 +1,36 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+# Project-local Codex layer. User authentication, model choice, notifications,
+# and credentials remain user-owned in ~/.codex/config.toml.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[features]
+multi_agent = true
+hooks = true
+
+[agents]
+max_threads = 3
+max_depth = 1
+
+# Keep the load-all surface within the repository's <=3 MCP ceiling.
+# Context7 and Exa are inherited from the user's ECC baseline.
+[mcp_servers.github]
+enabled = false
+
+[mcp_servers.memory]
+enabled = false
+
+[mcp_servers.playwright]
+enabled = false
+
+[mcp_servers.sequential-thinking]
+enabled = false
+
+# Project-scoped live test; do not promote globally until STATUS.md's gate passes.
+[mcp_servers.context-mode]
+command = "context-mode"
+startup_timeout_sec = 30
+
+[mcp_servers.context-mode.env]
+CONTEXT_MODE_PLATFORM = "codex"

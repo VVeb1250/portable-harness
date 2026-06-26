@@ -1,0 +1,15 @@
+{
+  "schema": "paw-skill-router-freeze/v1",
+  "status": "development-set",
+  "created": "2026-06-26",
+  "warning": "Graph coverage was tuned after v1 failures. Do not present v2 as held-out generalization.",
+  "files": {
+    "bench/skill_router/cohort_2026-06-26.json": "1c428bed11ae5ed894d69901efd2670337f9fc8be0bc4bd34d753eaeb440205c",
+    "paw/registry/skill_graph.json": "bfa354a65dbeeb216c524b845c7dde3804388d5b2f2695f8e4c902d8aa708138",
+    "bench/skill_router/runner.py": "ba71d5a8d6530a3fbb7d0edd7b4afac97f6bc377fd45a537354d1c2dc0ec925d",
+    "bench/skill_router/results_2026-06-26_v2/manifest.json": "fdb6758f35e0e11e5f65df1f7bf79b3541b3efa1eb83f410142531cef506f02d",
+    "bench/skill_router/results_2026-06-26_v2/results.json": "d93cf317753e65b4a3664f4d2e8336471fe9b8797264320dda253741a0273685",
+    "bench/skill_router/results_2026-06-26_v2/predictions.jsonl": "a9bb549474cf6c75ddcbb293806934327184a42feaba1c776921fde756bad8b2",
+    "bench/skill_router/BENCHMARK_2026-06-26.md": "09c09e72460cec09eefc9cfc590d4e03d3385d8f8d8e9fac15e55cbc408f2627"
+  }
+}

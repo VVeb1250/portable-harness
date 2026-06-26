@@ -18,8 +18,15 @@ cli = ["click>=8", "tomlkit>=0.12"]
 [project.scripts]
 paw = "paw.__main__:main"
 
+[tool.pytest.ini_options]
+# scope collection to the real suite; default crawl hits frozen swe_probe
+# artifacts (test_output.txt) whose docstrings break the doctest parser.
+testpaths = ["tests"]
+norecursedirs = ["bench", ".git", "*.egg-info"]
+
 [tool.hatch.build.targets.wheel]
 include = ["paw/**"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "paw/registry/sets.json" = "paw/registry/sets.json"
+"paw/registry/skill_graph.json" = "paw/registry/skill_graph.json"

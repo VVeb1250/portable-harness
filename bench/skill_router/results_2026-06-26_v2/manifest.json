@@ -1,0 +1,19 @@
+{
+  "schema": "paw-skill-router-bench/v1",
+  "created": "2026-06-26",
+  "arms": [
+    "load_all",
+    "metadata_lexical",
+    "semantic_top3",
+    "graph_top3",
+    "oracle"
+  ],
+  "case_count": 180,
+  "cohort": "E:\\portable-harness\\bench\\skill_router\\cohort_2026-06-26.json",
+  "cohort_sha256": "1c428bed11ae5ed894d69901efd2670337f9fc8be0bc4bd34d753eaeb440205c",
+  "graph": "E:\\portable-harness\\paw\\registry\\skill_graph.json",
+  "graph_sha256": "bfa354a65dbeeb216c524b845c7dde3804388d5b2f2695f8e4c902d8aa708138",
+  "catalog_sha256": "6f4460821a64b3ad7752d5196a405cec1724a8b8601f0c117973fc365c8b8694",
+  "tokenizer": "o200k_base if available; utf8-bytes/4 fallback",
+  "notes": "Retrieval/context benchmark only. load_all measures availability and context tax, not model selection or end-to-end task success."
+}
