@@ -32,6 +32,7 @@ from paw.semantic_router import default_semantic_scorer
 from paw.skill_graph import default_skill_graph_path, load_skill_graph
 from paw.skill_router import default_skill_roots, discover_skills, suggest_skill
 from paw.sets.loader import SetsError, get_set, load_all
+from paw.team_kernel import EvaluationResult, RoleOutput, TeamKernel, TeamKernelContext
 
 
 def _sets_list() -> int:
@@ -160,6 +161,89 @@ def _blackboard(args: argparse.Namespace) -> int:
         limit=args.limit,
     )
     return _print_blackboard_result(result, args.json)
+
+
+def _mock_planner(context: TeamKernelContext) -> RoleOutput:
+    return RoleOutput(
+        content=(
+            f"Plan iteration {context.iteration}: route {context.decision.strategy} "
+            f"for task: {context.task}"
+        )
+    )
+
+
+def _mock_implementer(context: TeamKernelContext) -> RoleOutput:
+    return RoleOutput(
+        content=(
+            f"Result iteration {context.iteration}: mock implementation completed "
+            "for the planned handoff."
+        )
+    )
+
+
+def _mock_reviewer(context: TeamKernelContext) -> RoleOutput:
+    return RoleOutput(content="PASS: mock review accepted the implementation handoff.")
+
+
+def _mock_evaluator(context: TeamKernelContext) -> EvaluationResult:
+    return EvaluationResult(passed=True, summary="mock evaluator accepted the run")
+
+
+def _team(args: argparse.Namespace) -> int:
+    if args.team_action != "run":
+        return 2
+    if not args.mock:
+        message = (
+            "team run currently supports only --mock; real Codex/DeepSeek adapters "
+            "are the next runtime layer."
+        )
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "status": "error",
+                        "summary": message,
+                        "next_actions": [
+                            "Run with --mock for the ICM smoke path or wire adapters first."
+                        ],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print(message, file=sys.stderr)
+        return 1
+
+    decision = route(
+        RouteRequest(
+            task=args.task,
+            complexity=args.complexity,
+            risk=args.risk,
+            sensitivity=args.sensitivity,
+            available_agents=tuple(args.available),
+            max_budget_usd=args.max_budget_usd,
+        )
+    )
+    board = IcmBlackboard(database=Path(args.db) if args.db else None)
+    result = TeamKernel(
+        project=args.project,
+        run_id=args.run_id,
+        blackboard=board,
+        planner=_mock_planner,
+        implementer=_mock_implementer,
+        reviewer=_mock_reviewer,
+        evaluator=_mock_evaluator,
+    ).run(task=args.task, decision=decision)
+
+    if args.json:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(result.summary)
+        print(f"stop: {result.stopped_reason}")
+        for action in result.next_actions:
+            print(f"next: {action}")
+    return 0 if result.status != "error" else 1
 
 
 def _recall(args: argparse.Namespace) -> int:
@@ -380,6 +464,44 @@ def main(argv: list[str] | None = None) -> int:
     read.add_argument("--db", help="ICM SQLite path; omit to use configured memory")
     read.add_argument("--json", action="store_true")
 
+    team = sub.add_parser(
+        "team",
+        help="run Team Kernel handoffs through the ICM-backed blackboard",
+    )
+    team_sub = team.add_subparsers(dest="team_action", required=True)
+    team_run = team_sub.add_parser(
+        "run",
+        help="execute a bounded Team Kernel run",
+    )
+    team_run.add_argument("task")
+    team_run.add_argument("--project", required=True)
+    team_run.add_argument("--run-id", required=True)
+    team_run.add_argument(
+        "--complexity",
+        choices=("auto", "simple", "complex"),
+        default="auto",
+    )
+    team_run.add_argument(
+        "--risk",
+        choices=("auto", "low", "medium", "high"),
+        default="auto",
+    )
+    team_run.add_argument(
+        "--sensitivity",
+        choices=("public", "private", "restricted"),
+        default="private",
+    )
+    team_run.add_argument(
+        "--available",
+        nargs="+",
+        default=("codex", "deepseek"),
+        metavar="AGENT",
+    )
+    team_run.add_argument("--max-budget-usd", type=float)
+    team_run.add_argument("--mock", action="store_true")
+    team_run.add_argument("--db", help="ICM SQLite path; omit to use configured memory")
+    team_run.add_argument("--json", action="store_true")
+
     recall_p = sub.add_parser(
         "recall",
         help="pull relevant memory: ICM shared brain + host committed conventions",
@@ -439,6 +561,8 @@ def main(argv: list[str] | None = None) -> int:
         return _suggest(args)
     if args.group == "blackboard":
         return _blackboard(args)
+    if args.group == "team":
+        return _team(args)
     if args.group == "recall":
         return _recall(args)
     if args.group == "reflect":
