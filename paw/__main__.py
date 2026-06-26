@@ -185,6 +185,10 @@ def _reflect(args: argparse.Namespace) -> int:
             session_id = session_id or payload.get("session_id", "")
         except (ValueError, OSError):
             payload = {}
+    if not transcript and args.host == "codex":
+        # Codex Stop stdin shape is unverified; fall back to the session's rollout
+        from paw.reflection import newest_codex_transcript
+        transcript = newest_codex_transcript(session_id) or None
     if not transcript:
         if not args.json:
             print("reflect: no transcript (pass --transcript or pipe the Stop-hook payload)")
@@ -194,7 +198,8 @@ def _reflect(args: argparse.Namespace) -> int:
     use_wm = bool(session_id) and not args.full
     start = load_watermark(session_id) if use_wm else 0
     result = reflect_capture(
-        transcript, session_id=session_id, start_line=start, write=not args.dry_run
+        transcript, session_id=session_id, start_line=start,
+        host=args.host, write=not args.dry_run,
     )
     if use_wm and not args.dry_run:
         save_watermark(session_id, result.next_line)
@@ -393,6 +398,8 @@ def main(argv: list[str] | None = None) -> int:
         help="capture mistake candidates from a session transcript into ICM pending",
     )
     reflect_p.add_argument("--capture", action="store_true", help="capture mode (default action)")
+    reflect_p.add_argument("--host", default="claude-code", choices=("claude-code", "codex"),
+                           help="transcript format (claude-code JSONL vs codex rollout)")
     reflect_p.add_argument("--transcript", help="transcript JSONL path (else read Stop-hook stdin)")
     reflect_p.add_argument("--session-id", help="session id for the pending keyword tag")
     reflect_p.add_argument("--dry-run", action="store_true", help="scan + print, do not write ICM")

@@ -127,6 +127,63 @@ class NoiseControlTests(unittest.TestCase):
         self.assertEqual(scan_transcript([spec]), [])
 
 
+def cdx_call(name: str, cid: str, **args) -> dict:
+    return {"type": "response_item", "payload": {
+        "type": "function_call", "name": name, "call_id": cid, "arguments": json.dumps(args)}}
+
+
+def cdx_out(cid: str, output: str) -> dict:
+    return {"type": "response_item", "payload": {
+        "type": "function_call_output", "call_id": cid, "output": output}}
+
+
+def cdx_msg(role: str, text: str) -> dict:
+    return {"type": "response_item", "payload": {
+        "type": "message", "role": role, "content": [{"type": "input_text", "text": text}]}}
+
+
+class CodexAdapterTests(unittest.TestCase):
+    def test_exit_code_nonzero_is_execution_mistake(self) -> None:
+        entries = [
+            cdx_call("shell_command", "c1", command="pytest tests/"),
+            cdx_out("c1", "Exit code: 1\nWall time: 2s\nOutput:\nAssertionError: boom"),
+        ]
+        cands = scan_transcript(entries, host="codex")
+        self.assertEqual(len(cands), 1)
+        self.assertEqual(cands[0].type, "execution")
+        self.assertIn("AssertionError", cands[0].trigger + cands[0].raw)
+
+    def test_exit_zero_not_captured(self) -> None:
+        entries = [
+            cdx_call("shell_command", "c1", command="ls"),
+            cdx_out("c1", "Exit code: 0\nWall time: 0.3s\nOutput:\nfile1 file2"),
+        ]
+        self.assertEqual(scan_transcript(entries, host="codex"), [])
+
+    def test_fail_then_fix_pairs_by_call_id(self) -> None:
+        entries = [
+            cdx_call("shell_command", "c1", command="git commit"),
+            cdx_out("c1", "Exit code: 1\nOutput:\nindex.lock exists"),
+            cdx_call("shell_command", "c2", command="git commit --retry"),
+            cdx_out("c2", "Exit code: 0\nOutput:\nok"),
+        ]
+        cands = scan_transcript(entries, host="codex")
+        self.assertEqual(cands[0].signal, "fail-fix")
+
+    def test_user_correction_from_codex_message(self) -> None:
+        cands = scan_transcript([cdx_msg("user", "revert that, wrong approach")], host="codex")
+        self.assertEqual(cands[0].type, "misalignment")
+
+    def test_developer_message_ignored(self) -> None:
+        self.assertEqual(scan_transcript([cdx_msg("developer", "please revert wrong")], host="codex"), [])
+
+    def test_codex_output_parsing(self) -> None:
+        from paw.reflection import _codex_output
+        self.assertEqual(_codex_output("Exit code: 2\nWall time\nOutput:\nboom"), (True, "boom"))
+        self.assertEqual(_codex_output("Exit code: 0\nOutput:\nok")[0], False)
+        self.assertEqual(_codex_output("no exit marker here")[0], False)
+
+
 class CaptureTests(unittest.TestCase):
     def _transcript(self, entries) -> str:
         tmp = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False, encoding="utf-8")

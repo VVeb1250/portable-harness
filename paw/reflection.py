@@ -115,6 +115,24 @@ def load_watermark(session_id: str) -> int:
         return 0
 
 
+def newest_codex_transcript(session_id: str = "") -> str:
+    """Best-effort resolve a Codex rollout when the Stop stdin omits a transcript
+    path (its hook payload shape is unverified). Prefer the rollout whose filename
+    carries the session id (Codex names files rollout-<ts>-<uuid>.jsonl); else the
+    most recent. Returns '' if none — capture then safely no-ops."""
+    import glob
+    base = os.path.expanduser("~/.codex/sessions")
+    files = sorted(glob.glob(os.path.join(base, "**", "*.jsonl"), recursive=True))
+    if not files:
+        return ""
+    if session_id:
+        tail = session_id.split("-")[-1] if "-" in session_id else session_id
+        matched = [f for f in files if tail and tail in os.path.basename(f)]
+        if matched:
+            return matched[-1]
+    return files[-1]
+
+
 def save_watermark(session_id: str, line: int) -> None:
     if not session_id:
         return
@@ -191,8 +209,8 @@ def _cmd_of(event: dict) -> str:
     if isinstance(inp, dict):
         if inp.get("command"):
             return str(inp["command"]).strip().splitlines()[0][:160]
-        if inp.get("file_path"):
-            return f"{event.get('name')} {inp['file_path']}"[:160]
+        if inp.get("file_path") or inp.get("path"):
+            return f"{event.get('name')} {inp.get('file_path') or inp.get('path')}"[:160]
     return str(event.get("name") or "?")
 
 
@@ -204,8 +222,17 @@ def _first_err_line(text: str) -> str:
     return "(no output)"
 
 
-def _tool_events(entries: list[dict]) -> list[dict]:
-    """Ordered tool_use events joined to their tool_result by tool_use_id."""
+def _tool_events(entries: list[dict], host: str = "claude-code") -> list[dict]:
+    """Normalize a transcript into ordered tool events {name,input,is_error,text}.
+
+    Host-dispatched: Claude Code uses ``message.content[]`` tool_use/tool_result
+    blocks paired by tool_use_id; Codex rollouts use ``response_item`` payloads
+    (function_call / custom_tool_call → *_output) paired by call_id, with the error
+    signal derived from the output's ``Exit code:`` line."""
+    return _tool_events_codex(entries) if host == "codex" else _tool_events_cc(entries)
+
+
+def _tool_events_cc(entries: list[dict]) -> list[dict]:
     results: dict[str, tuple[bool, str]] = {}
     uses: list[tuple[str, dict, str]] = []
     for e in entries:
@@ -225,6 +252,84 @@ def _tool_events(entries: list[dict]) -> list[dict]:
         is_err, text = results.get(tid, (False, ""))
         events.append({"name": name, "input": inp, "is_error": is_err, "text": text})
     return events
+
+
+def _codex_output(output) -> tuple[bool, str]:
+    """Codex tool output is a string like 'Exit code: N\\nWall time..\\nOutput:\\n..'.
+    is_error = a non-zero exit code (the explicit signal); exit-0-with-failure is the
+    silent-bug class left to the LLM pass, mirroring CC's is_error semantics."""
+    s = str(output or "")
+    m = re.search(r"Exit code:\s*(\d+)", s)
+    is_err = bool(m and int(m.group(1)) != 0)
+    body = s.split("Output:\n", 1)[1] if "Output:\n" in s else s
+    return is_err, body.strip()
+
+
+def _tool_events_codex(entries: list[dict]) -> list[dict]:
+    calls: dict[str, tuple[str, dict]] = {}
+    results: dict[str, tuple[bool, str]] = {}
+    order: list[str] = []
+    for e in entries:
+        if e.get("type") != "response_item":
+            continue
+        p = e.get("payload") or {}
+        pt = p.get("type")
+        if pt in ("function_call", "custom_tool_call"):
+            cid = p.get("call_id") or p.get("id") or ""
+            raw_args = p.get("arguments")
+            inp: dict = {}
+            if isinstance(raw_args, str):
+                try:
+                    inp = json.loads(raw_args)
+                except ValueError:
+                    inp = {"command": raw_args}
+            elif isinstance(p.get("input"), dict):
+                inp = p["input"]
+            if not isinstance(inp, dict):
+                inp = {}
+            calls[cid] = (p.get("name") or "?", inp)
+            order.append(cid)
+            if pt == "custom_tool_call" and p.get("status") not in (None, "completed"):
+                results.setdefault(cid, (True, f"status={p.get('status')}"))
+        elif pt in ("function_call_output", "custom_tool_call_output"):
+            results[p.get("call_id") or ""] = _codex_output(p.get("output"))
+    return [
+        {"name": calls[cid][0], "input": calls[cid][1],
+         "is_error": results.get(cid, (False, ""))[0], "text": results.get(cid, (False, ""))[1]}
+        for cid in order
+    ]
+
+
+def _user_texts(entries: list[dict], host: str = "claude-code") -> list[str]:
+    """Real (non-meta) user-turn texts, host-normalized."""
+    out: list[str] = []
+    if host == "codex":
+        for e in entries:
+            if e.get("type") != "response_item":
+                continue
+            p = e.get("payload") or {}
+            if p.get("type") != "message" or p.get("role") != "user":
+                continue
+            text = " ".join(
+                b.get("text", "") for b in (p.get("content") or [])
+                if isinstance(b, dict) and b.get("type") == "input_text"
+            ).strip()
+            if text:
+                out.append(text)
+        return out
+    for e in entries:
+        if e.get("type") != "user" or _is_meta(e):
+            continue
+        blocks = _content_blocks(e)
+        if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in blocks):
+            continue
+        text = " ".join(
+            b.get("text", "") for b in blocks
+            if isinstance(b, dict) and b.get("type") == "text"
+        ).strip()
+        if text:
+            out.append(text)
+    return out
 
 
 def _exec_candidates(events: list[dict]) -> list[Candidate]:
@@ -252,22 +357,12 @@ def _exec_candidates(events: list[dict]) -> list[Candidate]:
     return out
 
 
-def _misalign_candidates(entries: list[dict]) -> list[Candidate]:
+def _misalign_candidates(texts: list[str]) -> list[Candidate]:
     out: list[Candidate] = []
-    for e in entries:
-        if e.get("type") != "user" or _is_meta(e):
-            continue
-        blocks = _content_blocks(e)
-        # a real user turn, not a tool_result carrier
-        if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in blocks):
-            continue
-        text = " ".join(
-            b.get("text", "") for b in blocks
-            if isinstance(b, dict) and b.get("type") == "text"
-        ).strip()
+    for text in texts:
         # terse turns only — long turns are specs/instructions that merely mention
         # a correction word, not corrections themselves
-        if not text or len(text) > _MISALIGN_MAXLEN or not _CORRECTION.search(text):
+        if len(text) > _MISALIGN_MAXLEN or not _CORRECTION.search(text):
             continue
         snippet = re.sub(r"\s+", " ", text)[:130]
         out.append(Candidate(
@@ -281,9 +376,10 @@ def _misalign_candidates(entries: list[dict]) -> list[Candidate]:
     return out
 
 
-def scan_transcript(entries: Iterator[dict] | list[dict]) -> list[Candidate]:
+def scan_transcript(entries: Iterator[dict] | list[dict], host: str = "claude-code") -> list[Candidate]:
     entries = list(entries)
-    cands = _exec_candidates(_tool_events(entries)) + _misalign_candidates(entries)
+    cands = (_exec_candidates(_tool_events(entries, host))
+             + _misalign_candidates(_user_texts(entries, host)))
     seen: set[str] = set()
     uniq: list[Candidate] = []
     for c in cands:
@@ -356,6 +452,7 @@ def capture(
     *,
     session_id: str = "",
     start_line: int = 0,
+    host: str = "claude-code",
     store_runner: StoreRunner | None = None,
     write: bool = True,
 ) -> CaptureResult:
@@ -365,7 +462,7 @@ def capture(
     next_line = start_line
     try:
         entries, next_line = read_entries(transcript_path, start_line)
-        candidates = scan_transcript(entries)
+        candidates = scan_transcript(entries, host)
     except Exception:
         candidates = []
     stored = 0
