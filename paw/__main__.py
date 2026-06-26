@@ -205,6 +205,14 @@ def _team(args: argparse.Namespace) -> int:
             max_budget_usd=args.max_budget_usd,
         )
     )
+    guard = _guard_team_adapter_profile(adapter_profile, decision)
+    if guard is not None:
+        if args.json:
+            print(json.dumps(guard, ensure_ascii=False, indent=2))
+        else:
+            print(guard["summary"], file=sys.stderr)
+        return 1
+
     board = IcmBlackboard(database=Path(args.db) if args.db else None)
     if adapter_profile == "mock":
         planner = _mock_planner
@@ -250,6 +258,44 @@ def _team(args: argparse.Namespace) -> int:
         for action in result.next_actions:
             print(f"next: {action}")
     return 0 if result.status != "error" else 1
+
+
+def _guard_team_adapter_profile(
+    adapter_profile: str,
+    decision,
+) -> dict[str, object] | None:
+    if decision.status == "error" or decision.strategy == "stop":
+        return None
+    if adapter_profile != "codex-deepseek":
+        return None
+    if "privacy:restricted" in decision.constraints:
+        return {
+            "status": "error",
+            "summary": (
+                "codex-deepseek is blocked for restricted work because it uses "
+                "an external DeepSeek implementer."
+            ),
+            "next_actions": [
+                "Use --adapters mock, lower sensitivity only after redaction, or add a local codex-only adapter.",
+            ],
+        }
+    expected_roles = {
+        "planner": "codex",
+        "implementer": "deepseek",
+        "reviewer": "codex",
+    }
+    if decision.strategy != "team" or decision.roles != expected_roles:
+        return {
+            "status": "error",
+            "summary": (
+                "codex-deepseek adapter profile does not match the selected route "
+                f"roles: {decision.roles}."
+            ),
+            "next_actions": [
+                "Use --adapters mock for smoke tests or choose a task/routing policy that selects the codex-deepseek team.",
+            ],
+        }
+    return None
 
 
 def _recall(args: argparse.Namespace) -> int:
