@@ -6,10 +6,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 from paw.blackboard import BlackboardEntry, BlackboardResult, BlackboardScope
 from paw.router import RouteDecision
+from paw.team_adapters import TeamAdapterProfile
 from paw.team_kernel import (
     EvaluationResult,
     RoleOutput,
@@ -242,6 +246,74 @@ class TeamKernelCliIntegrationTests(unittest.TestCase):
                     ("evaluator", "result"),
                 ],
             )
+
+    def test_cli_codex_deepseek_profile_is_wired_without_claude(self) -> None:
+        from paw import __main__ as paw_main
+
+        board = InMemoryBlackboard()
+        built_repos: list[Path] = []
+
+        def planner(context: TeamKernelContext) -> RoleOutput:
+            return RoleOutput(content="Plan from Codex")
+
+        def implementer(context: TeamKernelContext) -> RoleOutput:
+            return RoleOutput(content="Implementation from DeepSeek")
+
+        def reviewer(context: TeamKernelContext) -> RoleOutput:
+            return RoleOutput(content="PASS: review from Codex")
+
+        def evaluator(context: TeamKernelContext) -> EvaluationResult:
+            return EvaluationResult(passed=True, summary="local handoff ok")
+
+        def build_profile(*, repo: Path) -> TeamAdapterProfile:
+            built_repos.append(repo)
+            return TeamAdapterProfile(
+                planner=planner,
+                implementer=implementer,
+                reviewer=reviewer,
+                evaluator=evaluator,
+            )
+
+        with (
+            patch.object(paw_main, "IcmBlackboard", lambda database=None: board),
+            patch.object(paw_main, "build_codex_deepseek_adapters", build_profile),
+        ):
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                code = paw_main.main(
+                    [
+                        "team",
+                        "run",
+                        "Fix the parser.",
+                        "--project",
+                        "portable-harness",
+                        "--run-id",
+                        "profile-test",
+                        "--complexity",
+                        "complex",
+                        "--risk",
+                        "medium",
+                        "--sensitivity",
+                        "public",
+                        "--adapters",
+                        "codex-deepseek",
+                        "--json",
+                    ]
+                )
+
+        self.assertEqual(code, 0)
+        self.assertEqual(built_repos, [Path.cwd()])
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "success")
+        self.assertEqual(
+            [entry["content"] for entry in payload["entries"]],
+            [
+                "Plan from Codex",
+                "Implementation from DeepSeek",
+                "PASS: review from Codex",
+                "PASS: local handoff ok",
+            ],
+        )
 
 
 if __name__ == "__main__":
