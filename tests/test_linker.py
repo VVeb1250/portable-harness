@@ -45,10 +45,10 @@ class LinkerSliceZeroTests(unittest.TestCase):
         inject = next(a for a in plan.actions if a.kind == "inject-context-block")
         self.assertTrue(inject.requires_approval)
 
-    def test_plan_blocks_an_mcp_set_on_a_non_json_host(self) -> None:
-        # Codex uses TOML config (no comment-preserving patcher yet) -> blocked.
+    def test_plan_blocks_an_mcp_set_on_a_host_without_mcp_config(self) -> None:
+        # cursor has no MCP config file mapping -> blocked.
         plan = build_plan(
-            "context-quality", host="codex", context=str(self.ctx), root=self.root
+            "context-quality", host="cursor", context=str(self.ctx), root=self.root
         )
         self.assertEqual(plan.status, "blocked")
         self.assertTrue(any(w.startswith("BLOCK:") for w in plan.warnings))
@@ -230,6 +230,64 @@ class PathWiringTests(unittest.TestCase):
         remove("repo-pack", host="claude-code", context=str(self.ctx), root=self.root)
         data = json.loads(self.env_file.read_text(encoding="utf-8"))
         self.assertEqual(data["env"]["PATH"], "/preexisting")
+
+
+class CodexTomlMcpTests(unittest.TestCase):
+    """slice-1b: comment-preserving MCP merge into Codex .codex/config.toml."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.cfg = self.root / ".codex" / "config.toml"
+        self.cfg.parent.mkdir()
+        self.cfg.write_text(
+            "# user-owned codex layer\n"
+            'approval_policy = "on-request"\n\n'
+            "[mcp_servers.github]\n"
+            "enabled = false  # keep disabled\n",
+            encoding="utf-8",
+        )
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _plan(self, name="context-quality"):
+        return build_plan(name, host="codex", root=self.root)
+
+    def test_plan_ok_for_mcp_set_on_codex(self) -> None:
+        plan = self._plan()
+        self.assertEqual(plan.status, "ok")
+        self.assertIn("inject-mcp", {a.kind for a in plan.actions})
+
+    def test_apply_merges_toml_table_and_preserves_comments(self) -> None:
+        result = apply_plan(self._plan(), root=self.root)
+        self.assertEqual(result.status, "ok")
+        text = self.cfg.read_text(encoding="utf-8")
+        self.assertIn("# user-owned codex layer", text)  # comment survives
+        self.assertIn("# keep disabled", text)           # inline comment survives
+        self.assertIn("[mcp_servers.context7]", text)    # new table added
+        servers = read_mcp_servers(self.cfg)
+        self.assertIn("github", servers)
+        self.assertIn("context7", servers)
+
+    def test_apply_is_idempotent_on_toml(self) -> None:
+        apply_plan(self._plan(), root=self.root)
+        before = self.cfg.read_text(encoding="utf-8")
+        apply_plan(self._plan(), root=self.root)
+        self.assertEqual(self.cfg.read_text(encoding="utf-8"), before)
+
+    def test_remove_strips_paw_table_keeps_user_servers(self) -> None:
+        apply_plan(self._plan(), root=self.root)
+        remove("context-quality", host="codex", root=self.root)
+        servers = read_mcp_servers(self.cfg)
+        self.assertIn("github", servers)        # user server kept
+        self.assertNotIn("context7", servers)   # paw server gone
+        self.assertIn("# user-owned codex layer", self.cfg.read_text(encoding="utf-8"))
+
+    def test_n1_excludes_disabled_servers(self) -> None:
+        # github is enabled=false -> should not count toward the ceiling.
+        plan = self._plan()
+        self.assertFalse(any(w.startswith("N1:") for w in plan.warnings))
 
 
 class McpWiringTests(unittest.TestCase):

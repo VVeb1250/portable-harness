@@ -147,11 +147,16 @@ def remove_bin_from_path(env_file: Path, bindir: Path, prev: str | None) -> bool
 # --------------------------------------------------------------------------- #
 # MCP wiring (slice-1) — JSON-config hosts only; Codex TOML deferred
 # --------------------------------------------------------------------------- #
-# Project-local MCP config file per host. JSON `mcpServers` map shape.
+# Project-local MCP config file per host. JSON hosts use a `mcpServers` map;
+# Codex uses TOML `[mcp_servers.<name>]` tables (comment-preserving via tomlkit).
 HOST_MCP_FILE = {
     "claude-code": (".mcp.json",),
     "gemini": (".gemini", "settings.json"),
+    "codex": (".codex", "config.toml"),
 }
+
+# Top-level key holding the server map, per config format.
+_MCP_TABLE = {"json": "mcpServers", "toml": "mcp_servers"}
 
 # Registry per-host config blocks key on these host ids (not "claude-code").
 _HOST_REGISTRY_KEY = {
@@ -200,25 +205,54 @@ def mcp_servers_for(item: CuratedSet, host: str) -> dict[str, dict]:
     return out
 
 
-def _read_mcp_doc(mcp_file: Path) -> dict:
-    if not mcp_file.exists():
-        return {}
-    return json.loads(mcp_file.read_text(encoding="utf-8") or "{}")
+def _mcp_format(mcp_file: Path) -> str:
+    return "toml" if mcp_file.suffix == ".toml" else "json"
+
+
+def mcp_toml_supported() -> bool:
+    """Codex TOML merge needs tomlkit (the [cli] extra) to preserve comments."""
+    try:
+        import tomlkit  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def read_mcp_servers(mcp_file: Path) -> dict[str, dict]:
-    return _read_mcp_doc(mcp_file).get("mcpServers", {})
+    """The server map, format-detected. Always returns plain dicts."""
+    if not mcp_file.exists():
+        return {}
+    text = mcp_file.read_text(encoding="utf-8")
+    if _mcp_format(mcp_file) == "toml":
+        import tomllib
+        return tomllib.loads(text).get("mcp_servers", {})
+    return (json.loads(text or "{}")).get("mcpServers", {})
 
 
 def merge_mcp_servers(
     mcp_file: Path, servers: dict[str, dict]
 ) -> tuple[tuple[str, ...], dict[str, dict | None]]:
-    """Merge servers into the host JSON; return (added_names, prior_values).
+    """Merge servers into the host config; return (added_names, prior_values).
 
-    prior_values maps each touched server -> its previous config (None if we
-    introduced it) so remove can restore or delete precisely.
+    Dispatches on file format. prior_values maps each touched server -> its
+    previous config (None if introduced) so remove can restore or delete it.
     """
-    doc = _read_mcp_doc(mcp_file)
+    if _mcp_format(mcp_file) == "toml":
+        return _merge_mcp_toml(mcp_file, servers)
+    return _merge_mcp_json(mcp_file, servers)
+
+
+def remove_mcp_servers(mcp_file: Path, prior: dict[str, dict | None]) -> tuple[str, ...]:
+    """Reverse merge_mcp_servers, format-detected."""
+    if not mcp_file.exists():
+        return ()
+    if _mcp_format(mcp_file) == "toml":
+        return _remove_mcp_toml(mcp_file, prior)
+    return _remove_mcp_json(mcp_file, prior)
+
+
+def _merge_mcp_json(mcp_file, servers):
+    doc = json.loads(mcp_file.read_text(encoding="utf-8") or "{}") if mcp_file.exists() else {}
     registry = doc.setdefault("mcpServers", {})
     prior: dict[str, dict | None] = {}
     added: list[str] = []
@@ -236,11 +270,8 @@ def merge_mcp_servers(
     return tuple(added), prior
 
 
-def remove_mcp_servers(mcp_file: Path, prior: dict[str, dict | None]) -> tuple[str, ...]:
-    """Reverse merge_mcp_servers: restore prior config or drop the key/file."""
-    if not mcp_file.exists():
-        return ()
-    doc = _read_mcp_doc(mcp_file)
+def _remove_mcp_json(mcp_file, prior):
+    doc = json.loads(mcp_file.read_text(encoding="utf-8") or "{}")
     registry = doc.get("mcpServers", {})
     removed: list[str] = []
     for name, prev in prior.items():
@@ -257,7 +288,62 @@ def remove_mcp_servers(mcp_file: Path, prior: dict[str, dict | None]) -> tuple[s
             json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
     else:
-        mcp_file.unlink()
+        mcp_file.unlink()  # JSON MCP file is paw-owned; safe to drop when empty
+    return tuple(removed)
+
+
+def _toml_table(cfg: dict):
+    import tomlkit
+    tbl = tomlkit.table()
+    for k, v in cfg.items():
+        tbl[k] = v
+    return tbl
+
+
+def _merge_mcp_toml(mcp_file, servers):
+    """Comment-preserving merge into [mcp_servers.<name>] tables (Codex)."""
+    import tomlkit
+
+    text = mcp_file.read_text(encoding="utf-8") if mcp_file.exists() else ""
+    plain = read_mcp_servers(mcp_file)  # tomllib -> plain dicts for compare
+    doc = tomlkit.parse(text) if text else tomlkit.document()
+    if "mcp_servers" not in doc:
+        doc["mcp_servers"] = tomlkit.table(is_super_table=True)
+    registry = doc["mcp_servers"]
+    prior: dict[str, dict | None] = {}
+    added: list[str] = []
+    for name, cfg in servers.items():
+        if plain.get(name) == cfg:
+            continue  # idempotent
+        prior[name] = plain.get(name)
+        registry[name] = _toml_table(cfg)
+        added.append(name)
+    if added:
+        mcp_file.parent.mkdir(parents=True, exist_ok=True)
+        mcp_file.write_text(tomlkit.dumps(doc), encoding="utf-8")
+    return tuple(added), prior
+
+
+def _remove_mcp_toml(mcp_file, prior):
+    """Reverse _merge_mcp_toml; never unlinks (config.toml holds user state)."""
+    import tomlkit
+
+    doc = tomlkit.parse(mcp_file.read_text(encoding="utf-8"))
+    registry = doc.get("mcp_servers")
+    if registry is None:
+        return ()
+    removed: list[str] = []
+    for name, prev in prior.items():
+        if prev is None:
+            if name in registry:
+                del registry[name]
+                removed.append(name)
+        else:
+            registry[name] = _toml_table(prev)
+            removed.append(name)
+    if len(registry) == 0:
+        del doc["mcp_servers"]
+    mcp_file.write_text(tomlkit.dumps(doc), encoding="utf-8")
     return tuple(removed)
 
 
@@ -424,17 +510,22 @@ def build_plan(
     ctx = _resolve_context(host, context, root)
     warnings: list[str] = []
 
-    # MCP wiring (slice-1): JSON hosts get merged; non-JSON (Codex TOML) blocks.
+    # MCP wiring: JSON hosts (CC/gemini) + Codex TOML (comment-preserving).
     mcp_servers: dict[str, dict] = {}
     mcp_file: Path | None = None
     if item.mcp:
         mcp_file = host_mcp_file(host, root)
         if mcp_file is None:
             warnings.append(
-                f"BLOCK: {set_name} has MCP server(s); host '{host}' uses a non-JSON "
-                "MCP config (e.g. Codex TOML), not supported in slice-1. Use "
-                "claude-code or gemini, or wait for the comment-preserving TOML patcher."
+                f"BLOCK: {set_name} has MCP server(s) but host '{host}' has no known "
+                "MCP config file. Use claude-code, codex, or gemini."
             )
+        elif _mcp_format(mcp_file) == "toml" and not mcp_toml_supported():
+            warnings.append(
+                "BLOCK: Codex TOML merge needs tomlkit. Install the cli extra: "
+                "pip install 'port-a-whip[cli]'."
+            )
+            mcp_file = None
         else:
             mcp_servers = mcp_servers_for(item, host)
             if not mcp_servers:
@@ -481,7 +572,12 @@ def build_plan(
     blocked = any(w.startswith("BLOCK:") for w in warnings)
 
     if mcp_servers and mcp_file is not None and not blocked:
-        union = set(read_mcp_servers(mcp_file)) | set(mcp_servers)
+        # count only active servers (Codex keeps enabled=false stubs that load no defs)
+        existing_active = {
+            n for n, c in read_mcp_servers(mcp_file).items()
+            if not (isinstance(c, dict) and c.get("enabled") is False)
+        }
+        union = existing_active | set(mcp_servers)
         if len(union) > N1_CEILING:
             warnings.append(
                 f"N1: {len(union)} active MCP servers on {host} after wiring "
