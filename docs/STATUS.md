@@ -1,6 +1,6 @@
 # STATUS — session state (compact-survival)
 
-> อัพเดท: 2026-06-25 · state ก้อนเดียวให้ session หลัง-compact resume ได้ครบ. **resume: อ่าน §0 (current truth) → §F (next) ก่อน.**
+> อัพเดท: 2026-06-26 · state ก้อนเดียวให้ session หลัง-compact resume ได้ครบ. **resume: อ่าน §0 (current truth) → §F (next) ก่อน.**
 > Doc map: [CLAUDE.md](../CLAUDE.md) mindset+routing · [ARCHITECTURE.md](./ARCHITECTURE.md) blueprint · [SHARED-BRAIN.md](./SHARED-BRAIN.md) L0 · [BENCH.md](./BENCH.md) bench detail · **STATUS.md (นี่)** = current truth.
 > ⚠️ ประวัติ handoff ละเอียด §1-16 (pre-pivot harness framing → ECC collision → fork → context-mode adopt → swe-probe round 1) = **condensed ลงนี่แล้ว**; กู้เต็มได้ที่ git ก่อน commit `71a2815`.
 
@@ -11,8 +11,9 @@
 - **economics gate ผ่าน:** frozen SymPy N=8 = `team3 5/8 > codex-solo 4/8 > claude-solo 2/6 ≈ deepseek-solo 2/8`. Canonical manifest: `bench/swe_probe/FROZEN_N8_2026-06-25.json`; verify with `python bench/swe_probe/verify_freeze.py`.
 - **router live:** `python -m paw route` — deterministic complexity/risk/privacy/budget/fallback policy + JSON contract; 14 tests, 91.3% statement coverage.
 - **shared blackboard live:** `python -m paw blackboard write/read` — ICM topic `<project>/blackboard/<run-id>`, versioned/bounded/secret-safe; real isolated ICM SQLite round-trip passes.
+- **Team Kernel v0 runtime live:** `paw.team_kernel.TeamKernel` executes RouteDecision-shaped Planner → Implementer → Reviewer → evaluator/stop loops with bounded retries and blackboard handoffs. Current slice is adapter-injected; no real agent launcher yet.
 - **portable claim:** decision + data protocol portable; execution and enforcement remain host-tiered. Do not claim uniform hooks/security.
-- **next:** build Team Kernel vertical slice: RouteDecision → Planner → Implementer → Reviewer → evaluator/stop, using ICM blackboard handoffs.
+- **next:** wire real Codex/DeepSeek adapters + CLI around Team Kernel, lifting contracts from `swe_probe` without importing the frozen cohort into runtime code.
 - **benchmark is frozen:** do not append to the N=8 cohort. New repo/model/N requires a new dated cohort and manifest.
 
 ---
@@ -57,7 +58,7 @@
 - **rtk** — token-cut Bash-hook (global). บีบ git ดี แต่ workload นี้ rtk-able แค่ ~0.8% (Read 62% ครอง).
 - **nah 0.9.1** — security guard PreToolUse (BLOCK curl|bash · ASK dual-use/rm-rf · ALLOW git_safe). dual-use→ASK ห้าม loosen.
 - **context-mode MCP** (project-scoped `.mcp.json`, ELv2 local-first) — ctx_* 11 tools, +7.9k tok/session repo นี้. routing nudge block ใน CLAUDE.md. **gate = folded (§D).**
-- **paw router + blackboard** — route decision and shared-state CLIs live; total test suite 23.
+- **paw router + blackboard + team kernel** — route decision and shared-state CLIs live; Team Kernel runtime is adapter-injected. Contract tests: 26 across router/blackboard/kernel.
 - **swe-probe** `bench/swe_probe/` — frozen SymPy N=8 evidence; verifier runs without paid arms.
 - WSL Ubuntu + swebench + Docker Desktop (flask env-image cached, eval ~1-2min). `$env:DEEPSEEK_API_KEY` set. ccusage 20.0.14 · tiktoken 0.13.0 · iii.exe PATH.
 - **ECC plugin hooks** = 24 hooks (node-spawn ทุก tool-call, CC-locked). **DECISION 2026-06-25: `ECC_HOOK_PROFILE=minimal`** set ใน `~/.claude/settings.json` `env` (มีผล session หน้า). minimal = ตัด tier `standard` (gateguard fact-force, ecc-context-monitor cost-warning, quality-gate, console/design/doc warnings, suggest-compact) เก็บเฉพาะ minimal-tier (observe/metrics/cost-tracker/session-end = เงียบ, feed ICM). knob อื่น: `ECC_DISABLED_HOOKS=id,id` (surgical) · `ECC_GATEGUARD=off` (gate ตัวเดียว).
@@ -122,10 +123,10 @@
 
 **Current ordered next work:**
 
-1. Team Kernel v0: execute `RouteDecision` through Planner → Implementer → Reviewer → evaluator with bounded retries and explicit stop conditions.
-2. Use ICM blackboard for real plan/review/result handoffs; artifacts stay in files and memory stores references/summaries only.
+1. ~~Team Kernel v0 contract~~ **DONE 2026-06-26** — `paw.team_kernel.TeamKernel` runs Planner → Implementer → Reviewer → evaluator/stop with bounded retries, review-gated evaluation, explicit stop reasons, and blackboard handoffs. Adapter-injected only; no real agent launcher yet.
+2. Add Team Kernel CLI + isolated ICM integration smoke so a run can write/read real `<project>/blackboard/<run-id>` entries outside tests.
 3. Lift Codex/DeepSeek adapter contracts from `swe_probe` without importing the frozen benchmark cohort into runtime code.
-4. Add Linux/macOS CI for router + blackboard; Windows is already live.
+4. Add Linux/macOS CI for router + blackboard + Team Kernel; Windows is already live.
 5. Implement `paw link/verify/unlink` after the Team Kernel contract settles.
 6. Optional later benchmark work must use a new dated cohort.
 
