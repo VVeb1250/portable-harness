@@ -14,6 +14,9 @@ Before non-trivial work:
    active benchmark work.
 3. Run `git status --short --branch`. Treat existing changes as another
    agent's work unless the user explicitly puts them in scope.
+4. **Resuming the memory system?** Read `docs/HANDOFF.md` — the capture →
+   curate → recall loop is live on Codex too; your first task is to verify your
+   own capture fires (the Codex Stop-stdin shape is the one unverified contract).
 
 `bundle/AGENTS.md` is the canonical future linker source. This root file is the
 active Codex bridge while `paw link` is still WIP.
