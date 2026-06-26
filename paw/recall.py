@@ -40,11 +40,16 @@ def _run(cmd: list[str]) -> str:
 
 
 def icm_recall(query: str, limit: int = 5, runner: Runner | None = None) -> list[dict]:
-    """Top-K relevant ICM memories across all wiki topics. Fail-silent → []."""
+    """Top-K relevant ICM memories across all wiki topics. Fail-silent → [].
+
+    Excludes the ``pending`` topic — those are coarse, unreconciled capture
+    candidates (Phase 2) that must never surface as wiki until curation promotes
+    them (Phase 3). Over-fetch then drop, so the cap still yields wiki hits.
+    """
     runner = runner or _run
     cmd = [
         _icm_exe(), "recall", query.strip(),
-        "--limit", str(limit),
+        "--limit", str(limit + 5),
         "--format", "json",
         "--no-embeddings",
         "--read-only",
@@ -54,7 +59,10 @@ def icm_recall(query: str, limit: int = 5, runner: Runner | None = None) -> list
         data = json.loads(raw) if raw.strip() else []
     except (ValueError, OSError, subprocess.SubprocessError):
         return []
-    return data if isinstance(data, list) else []
+    if not isinstance(data, list):
+        return []
+    wiki = [m for m in data if not (isinstance(m, dict) and m.get("topic") == "pending")]
+    return wiki[:limit]
 
 
 def grep_committed(query: str, host: str, root: Path, limit: int = 5) -> list[tuple[int, str]]:

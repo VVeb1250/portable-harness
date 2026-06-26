@@ -21,6 +21,7 @@ from paw.blackboard import (
 )
 from paw.linker import LinkerError, apply_plan, build_plan, remove, verify
 from paw.recall import recall as recall_memory
+from paw.reflection import capture as reflect_capture
 from paw.router import RouteRequest, route
 from paw.semantic_router import default_semantic_scorer
 from paw.skill_graph import default_skill_graph_path, load_skill_graph
@@ -158,6 +159,32 @@ def _blackboard(args: argparse.Namespace) -> int:
 
 def _recall(args: argparse.Namespace) -> int:
     result = recall_memory(args.query, host=args.host, limit=args.limit)
+    if args.json:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(result.render())
+    return 0
+
+
+def _reflect(args: argparse.Namespace) -> int:
+    """Capture mistake candidates → ICM pending. Hook-safe: always returns 0.
+
+    Called by the Stop hook (stdin = ``{transcript_path, session_id}``) or
+    directly with ``--transcript``. Capture never breaks the session end.
+    """
+    transcript, session_id = args.transcript, args.session_id or ""
+    if not transcript:
+        try:
+            payload = json.load(sys.stdin)
+            transcript = payload.get("transcript_path")
+            session_id = session_id or payload.get("session_id", "")
+        except (ValueError, OSError):
+            payload = {}
+    if not transcript:
+        if not args.json:
+            print("reflect: no transcript (pass --transcript or pipe the Stop-hook payload)")
+        return 0
+    result = reflect_capture(transcript, session_id=session_id, write=not args.dry_run)
     if args.json:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
     else:
@@ -331,6 +358,16 @@ def main(argv: list[str] | None = None) -> int:
     recall_p.add_argument("--limit", type=int, default=5)
     recall_p.add_argument("--json", action="store_true")
 
+    reflect_p = sub.add_parser(
+        "reflect",
+        help="capture mistake candidates from a session transcript into ICM pending",
+    )
+    reflect_p.add_argument("--capture", action="store_true", help="capture mode (default action)")
+    reflect_p.add_argument("--transcript", help="transcript JSONL path (else read Stop-hook stdin)")
+    reflect_p.add_argument("--session-id", help="session id for the pending keyword tag")
+    reflect_p.add_argument("--dry-run", action="store_true", help="scan + print, do not write ICM")
+    reflect_p.add_argument("--json", action="store_true")
+
     plan_p = sub.add_parser("plan", help="preview wiring a CLI set into a host (no mutation)")
     _add_linker_args(plan_p, with_scope=True)
     apply_p = sub.add_parser("apply", help="wire a CLI set into a host (drift-guarded, backed up)")
@@ -356,6 +393,8 @@ def main(argv: list[str] | None = None) -> int:
         return _blackboard(args)
     if args.group == "recall":
         return _recall(args)
+    if args.group == "reflect":
+        return _reflect(args)
     p.print_help()
     return 2
 
