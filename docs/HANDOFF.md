@@ -1,80 +1,117 @@
-# Handoff → Codex (memory system)
+# Handoff -> Claude (blackboard + memory)
 
-> Written by Claude (Opus 4.8) 2026-06-26, branch `docs/bundle-scout-vets`.
-> Cross-host continuity also in the **ICM blackboard** (`paw blackboard read
-> --project portable-harness --run-id memory-2026-06-26 --kind handoff`).
-> Full spec: `docs/MEMORY-PLAN.md`. Per-pillar detail: `docs/STATUS.md`.
+> Updated by Codex 2026-06-26 after Team Kernel mutation/evaluation layer v0.
+> This file is the human-readable handoff. The live cross-host handoff is also
+> in ICM blackboard run `claude-handoff-2026-06-26`.
+> Read `docs/STATUS.md` section 0, then this file, before changing code.
 
-## What exists now (built + tested + live)
+## First Commands
 
-The behavioral memory loop is **code-complete and host-uniform** (CC + Codex):
+Use PowerShell from `E:\portable-harness`.
 
+```powershell
+git status --short --branch
+python -m paw blackboard read --project portable-harness --run-id claude-handoff-2026-06-26 --kind handoff --query "handoff mutation blackboard" --limit 10
+python -m paw recall "portable-harness Team Kernel mutation blackboard memory" --host claude-code --limit 5
+python -m paw curate --surface --limit 10
 ```
-session → [Stop] paw reflect --capture → ICM `pending`
-                    (+ [--llm] DeepSeek silent-bug pass, opt-in)
-        → [SessionStart] paw curate --surface → reconcile vs recall
-                    → ADD new | BUMP recurrence(seen:N, escalate) → ICM wiki
-        → [UserPromptSubmit] paw_block + paw recall → surface lessons
+
+When writing back to the shared team thread:
+
+```powershell
+python -m paw blackboard write --project portable-harness --run-id claude-handoff-2026-06-26 --role claude --kind observation --content "<short status/update>" --importance medium
 ```
 
-- **Capture** (`paw/reflection.py`): host-dispatched transcript parse. CC =
-  `message.content[]` tool_use/tool_result(`is_error`). Codex = `response_item`
-  payloads (function_call/custom_tool_call ↔ `*_output` by `call_id`; no
-  is_error → derived from the output's `Exit code: N`). Noise filters:
-  permission-denial / `nah`-guard / compact / meta dropped; misalignment =
-  terse(≤240c) + strong marker. Incremental per-session watermark
-  (`~/.paw/state/reflect/<sid>.json`) — Stop fires per turn, so only new lines
-  are scanned. `pending` is excluded from `paw recall`.
-- **Curate** (`paw/curate.py`): reconciles each pending vs `paw recall` top-K by
-  Jaccard. ADD (new) / BUMP (≥0.5 → `seen:N`++ , escalate seen≥3→critical) /
-  SKIP. Drains pending. UPDATE-merge + DELETE deferred (LLM judgement).
-- **Hybrid** (`paw/reflect_llm.py`, `paw reflect --llm`): opt-in DeepSeek pass
-  for the silent-bug class (success-with-failure) the heuristic is blind to.
-  Local pre-filter → $0 when nothing suspicious; OFF on the live hooks.
-- **Bench** (`bench/_reflection_ab.py`): heuristic vs DeepSeek. On the gold set
-  both F1≈0.86 but pure-LLM not worth per-session cost → hybrid is the verdict.
+Use `icm.exe` explicitly for direct ICM commands on PowerShell; bare `icm` can
+resolve to `Invoke-Command`.
 
-Hooks wired (personal files, not in repo): CC `~/.claude/settings.json` and
-Codex `~/.codex/hooks.json` Stop→`paw reflect --capture [--host codex]`,
-SessionStart→`paw curate --surface`. 160 tests green.
+## Current State
 
-## Your first task (it's literally yours to verify)
+- `main` is clean at the time of this handoff.
+- Latest local work: Team Kernel now supports
+  `Planner -> Implementer -> optional Mutator -> Reviewer -> Evaluator`.
+- The mutator is injected as `mutation_runner`; it records role `mutator`,
+  kind `result`, and artifact references in the blackboard/result.
+- Evaluator failures are already fed into the next planner/implementer context.
+- Mock CLI emits a deterministic patch artifact (`mock-patch-1.diff`), so the
+  blackboard path is testable without external models.
+- `codex-deepseek` still does not mutate files directly. Real mutation is the
+  next layer.
 
-**Confirm Codex capture fires end-to-end.** The Codex Stop-hook *stdin* shape is
-unverified — capture has a fallback that resolves your rollout under
-`~/.codex/sessions` (by session-id in the filename, else newest), but no live
-Codex Stop has been observed. So:
+Verification already run by Codex:
 
-1. Work normally for a few turns (make a real shell error somewhere).
-2. `icm.exe list -t pending --format json --no-embeddings --read-only` — your
-   mistakes should appear with `type:` / `session:` keywords.
-3. Check the watermark advanced: `~/.paw/state/reflect/<your-session>.json`.
-4. If pending stays empty: inspect what the Stop hook receives on stdin
-   (`paw reflect --capture --host codex` reads `{transcript_path, session_id}`),
-   and confirm `newest_codex_transcript()` matched YOUR rollout (filename carries
-   the session uuid). Fix the resolver or add the right stdin key.
+```powershell
+python -m compileall -q paw
+python -m paw sets list
+python -m paw sets show secure-agent
+python -m pytest tests/test_team_kernel.py -q
+python -m pytest tests/ -q
+```
 
-Manual dry-run any time: `py -m paw reflect --capture --host codex --transcript
-<rollout.jsonl> --dry-run`.
+Most recent observed full suite: `173 passed, 4 subtests passed`.
 
-## Then (optimization, not core)
+## Memory / Blackboard Status
 
-- **Phase 5 — graduate** (`docs/MEMORY-PLAN.md` row 5): suggest a candidate skill
-  when a lesson recurs (`seen:N ≥ thr`) and is procedural-shaped. Human-gated —
-  never auto-write a skill. Add `paw graduate` (suggest-only).
-- **Bench hardening**: more fixtures + multi-run stability; add live-CC / live-Codex
-  arms to `bench/_reflection_ab.py`.
-- **Tune live pending**: watch real captures. Known candidate noise — pytest
-  failures during TDD are expected red, not mistakes; consider filtering
-  test-run exit codes in `paw/reflection.py` `_exec_candidates`.
+The memory stack is live enough to use, but not polished enough to trust without
+human curation.
 
-## Guardrails (do not violate)
+Working evidence:
 
-- `icm consolidate` **only with `--keep-originals --summarizer-provider <llm>`** —
-  bare/`provider=none` joins the whole topic into one ` | ` blob and DELETES
-  originals (data loss; recovered once already).
-- `nah` guards hook *scripts* (e.g. `skill-router.py`). Hook *config* files
-  (`settings.json`, `hooks.json`) are editable.
-- Windows: `py` only; backslash paths; call `icm.exe` (not bare `icm`).
-- Storage split, recall unified: experiential → ICM; conventions/ADR → AGENTS.md
-  family. `pending` is never recalled into the wiki until curation promotes it.
+- `python -m paw blackboard write/read` works with isolated SQLite and default
+  ICM-backed storage.
+- `python -m paw recall ... --host codex|claude-code` returns ICM memories plus
+  committed repo conventions.
+- `python -m paw reflect --host codex --dry-run --json` resolves the current
+  Codex rollout transcript and extracts candidates.
+- `~/.codex/hooks.json` contains Stop hook:
+  `py -m paw reflect --capture --host codex`.
+- Reflect watermarks exist under `~/.paw/state/reflect/`.
+- `python -m paw curate --surface` sees pending items.
+
+Known weakness:
+
+- Live pending is noisy. Many candidates are expected TDD/diagnostic failures
+  like `shell_command failed: ...F [100%] -> fixed by ...`. Do not blindly
+  promote all pending entries into wiki memory. Tune filters or curate manually.
+- `docs/HANDOFF.md` previously said Codex Stop stdin was unverified. It is now
+  at least partially exercised on this machine (hook configured, watermark
+  present, pending exists), but stdin shape should still be treated as a decayable
+  host contract.
+
+Useful checks:
+
+```powershell
+icm.exe list -t pending --format json --no-embeddings --read-only
+python -m paw reflect --host codex --dry-run --json
+python -m paw curate --surface --limit 10
+```
+
+## What To Work On Next
+
+Ordered next work:
+
+1. Implement a real mutation runner that can safely turn implementer handoff
+   into patch/search-replace artifacts, with explicit rollback/backup policy.
+2. Implement a focused verification runner (affected tests, `compileall`,
+   selected `paw verify`, or explicit command artifact) and feed its output into
+   the existing evaluator loop.
+3. Add CI that runs Python/runtime surfaces on `paw/**`, `tests/**`, and docs
+   changes. Current GitHub workflow for bundle smoke is green, but path filters
+   do not cover the latest Team Kernel code.
+4. Tune memory capture/curation noise before treating live pending as durable
+   project knowledge.
+5. Keep benchmark cohorts frozen. Do not append to
+   `bench/swe_probe/FROZEN_N8_2026-06-25.json`; create a new dated cohort for
+   any new benchmark.
+
+## Guardrails
+
+- Do not edit/clean/reset/move benchmark files unless explicitly asked.
+- Do not spawn hidden subagents inside measured benchmark arms.
+- Do not claim uniform hook/security parity. Portable claim is decision/data
+  protocol; execution/enforcement remains host-tiered.
+- Use `python -m paw ...`; the Windows `py` launcher may be stale for this repo.
+- Use `icm.exe`, not bare `icm`, in PowerShell.
+- Use isolated `--db <temp.db>` for smoke tests unless intentionally writing to
+  shared ICM.
+- `pending` is not durable knowledge until curated/promoted.

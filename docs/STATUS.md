@@ -1,6 +1,6 @@
 # STATUS — session state (compact-survival)
 
-> อัพเดท: 2026-06-26 · state ก้อนเดียวให้ session หลัง-compact resume ได้ครบ. **resume: อ่าน §0 (current truth) → §F (next) ก่อน.**
+> อัพเดท: 2026-06-26 · state ก้อนเดียวให้ session หลัง-compact resume ได้ครบ. **resume: อ่าน §0 (current truth) → §F (next) ก่อน.** Claude handoff: `docs/HANDOFF.md` + blackboard run `claude-handoff-2026-06-26` (`--query "handoff mutation blackboard"`).
 > Doc map: [CLAUDE.md](../CLAUDE.md) mindset+routing · [ARCHITECTURE.md](./ARCHITECTURE.md) blueprint · [SHARED-BRAIN.md](./SHARED-BRAIN.md) L0 · [BENCH.md](./BENCH.md) bench detail · **STATUS.md (นี่)** = current truth.
 > ⚠️ ประวัติ handoff ละเอียด §1-16 (pre-pivot harness framing → ECC collision → fork → context-mode adopt → swe-probe round 1) = **condensed ลงนี่แล้ว**; กู้เต็มได้ที่ git ก่อน commit `71a2815`.
 
@@ -12,6 +12,8 @@
 - **router live:** `python -m paw route` — deterministic complexity/risk/privacy/budget/fallback policy + JSON contract; 14 tests, 91.3% statement coverage.
 - **shared blackboard live:** `python -m paw blackboard write/read` — ICM topic `<project>/blackboard/<run-id>`, versioned/bounded/secret-safe; real isolated ICM SQLite round-trip passes.
 - **Team Kernel v0 runtime + CLI live:** `paw.team_kernel.TeamKernel` executes RouteDecision-shaped Planner → Implementer → optional Mutator → Reviewer → evaluator/stop loops with bounded retries and blackboard handoffs. `python -m paw team run ... --mock --db <isolated.db>` proves real ICM write/read transport plus mock patch-artifact handoff. `--adapters codex-deepseek` wires Codex read-only plan/review + DeepSeek implementer handoff; it is explicit, route-guarded, and blocked for `--sensitivity restricted`.
+- **handoff to Claude:** current handoff is in `docs/HANDOFF.md` and ICM blackboard run `claude-handoff-2026-06-26`; Claude should read/write that run to exercise shared blackboard.
+- **memory posture:** blackboard/recall/reflect/curate are live and tested, but live pending is noisy; do not blindly promote command-failure candidates into durable wiki memory.
 - **portable claim:** decision + data protocol portable; execution and enforcement remain host-tiered. Do not claim uniform hooks/security.
 - **release posture:** alpha/internal-beta only. README quickstart exists, but full public release still needs real patch/search-replace applier policy, cross-platform CI, and release docs.
 - **next:** wire a real mutation runner for patch/search-replace artifacts and a focused verification runner; the kernel loop already feeds evaluator failures back into the next planner/implementer context without importing the frozen benchmark cohort.
@@ -129,9 +131,12 @@
 3. ~~Lift Codex/DeepSeek adapter contracts from `swe_probe`~~ **DONE 2026-06-26** — `paw.team_adapters` has Codex read-only CLI planner/reviewer (`codex exec --json -o`) and DeepSeek Anthropic-compatible implementer (`/v1/messages`, `$DEEPSEEK_API_KEY`). Claude is intentionally not in the default runtime path; keep it as optional benchmark/comparison only.
 4. ~~Privacy guard + alpha quickstart~~ **DONE 2026-06-26** — `codex-deepseek` is blocked for restricted work and route mismatch before adapter construction; README documents mock smoke, real adapter env, and host-tiered caveats.
 5. ~~Mutation/evaluation layer v0~~ **DONE 2026-06-26** — Team Kernel supports an injected `mutation_runner` after implementer handoff, records mutator artifacts in the blackboard/result, runs focused verification via evaluator, and feeds evaluator failures into the next planner/implementer context. Mock CLI emits a deterministic patch artifact; real patch/search-replace applier remains next.
-6. Add Linux/macOS CI for router + blackboard + Team Kernel; Windows is already live.
-7. Implement `paw link/verify/unlink` after the Team Kernel contract settles.
-8. Optional later benchmark work must use a new dated cohort.
+6. Write Claude handoff to `docs/HANDOFF.md` and ICM blackboard run `claude-handoff-2026-06-26`; ask Claude to read/write the blackboard before acting.
+7. Add a real patch/search-replace mutation runner and focused verification runner.
+8. Add Linux/macOS CI for router + blackboard + Team Kernel; Windows/local is already live, and bundle smoke is green.
+9. Tune memory capture/curation noise before promoting pending entries by default.
+10. Implement `paw link/verify/unlink` after the Team Kernel contract settles.
+11. Optional later benchmark work must use a new dated cohort.
 
 > Everything below in §F is a historical backlog retained for provenance; do not resume it over the ordered list above.
 
