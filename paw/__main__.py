@@ -20,6 +20,7 @@ from paw.blackboard import (
     IcmBlackboard,
 )
 from paw.linker import LinkerError, apply_plan, build_plan, remove, verify
+from paw.recall import recall as recall_memory
 from paw.router import RouteRequest, route
 from paw.semantic_router import default_semantic_scorer
 from paw.skill_graph import default_skill_graph_path, load_skill_graph
@@ -153,6 +154,15 @@ def _blackboard(args: argparse.Namespace) -> int:
         limit=args.limit,
     )
     return _print_blackboard_result(result, args.json)
+
+
+def _recall(args: argparse.Namespace) -> int:
+    result = recall_memory(args.query, host=args.host, limit=args.limit)
+    if args.json:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(result.render())
+    return 0
 
 
 def _print_tx(result, as_json: bool) -> int:
@@ -308,6 +318,19 @@ def main(argv: list[str] | None = None) -> int:
     read.add_argument("--db", help="ICM SQLite path; omit to use configured memory")
     read.add_argument("--json", action="store_true")
 
+    recall_p = sub.add_parser(
+        "recall",
+        help="pull relevant memory: ICM shared brain + host committed conventions",
+    )
+    recall_p.add_argument("query")
+    recall_p.add_argument(
+        "--host",
+        default="claude-code",
+        choices=("claude-code", "codex", "gemini"),
+    )
+    recall_p.add_argument("--limit", type=int, default=5)
+    recall_p.add_argument("--json", action="store_true")
+
     plan_p = sub.add_parser("plan", help="preview wiring a CLI set into a host (no mutation)")
     _add_linker_args(plan_p, with_scope=True)
     apply_p = sub.add_parser("apply", help="wire a CLI set into a host (drift-guarded, backed up)")
@@ -331,6 +354,8 @@ def main(argv: list[str] | None = None) -> int:
         return _suggest(args)
     if args.group == "blackboard":
         return _blackboard(args)
+    if args.group == "recall":
+        return _recall(args)
     p.print_help()
     return 2
 
