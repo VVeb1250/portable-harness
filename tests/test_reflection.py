@@ -126,6 +126,71 @@ class NoiseControlTests(unittest.TestCase):
         spec = user_text("เพิ่มฟีเจอร์ใหม่ " + "x" * 260 + " revert")
         self.assertEqual(scan_transcript([spec]), [])
 
+    def test_harness_read_before_write_not_captured(self) -> None:
+        entries = [
+            asst("Edit", "a", file_path="x.py"),
+            result("a", is_error=True,
+                   content="<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>"),
+        ]
+        self.assertEqual(scan_transcript(entries), [])
+
+    def test_harness_string_not_found_not_captured(self) -> None:
+        entries = [
+            asst("Edit", "a", file_path="x.py"),
+            result("a", is_error=True, content="String to replace not found in file."),
+        ]
+        self.assertEqual(scan_transcript(entries), [])
+
+    def test_tdd_red_phase_test_failure_not_captured(self) -> None:
+        # the single biggest pending-flood source: a red-phase pytest run
+        entries = [
+            asst("Bash", "a", command="py -m pytest tests/"),
+            result("a", is_error=True,
+                   content="tests/test_x.py F      [100%]\n=== FAILURES ===\n1 failed, 3 passed"),
+            asst("Bash", "b", command="py -m pytest tests/"),
+            result("b", is_error=False, content="4 passed"),
+        ]
+        self.assertEqual(scan_transcript(entries), [])
+
+    def test_inline_probe_failure_not_captured(self) -> None:
+        entries = [
+            asst("Bash", "a", command='py -c "import paw; print(paw.x)"'),
+            result("a", is_error=True, content="AttributeError: module 'paw' has no attribute 'x'"),
+        ]
+        self.assertEqual(scan_transcript(entries), [])
+
+    def test_self_misclick_dismissal_not_captured(self) -> None:
+        # "misclicked, continue" — a wave-off of the user's own slip, not a correction
+        self.assertEqual(scan_transcript([user_text("กดผิด ต่อเลย")]), [])
+
+    def test_strong_correction_survives_continue_word(self) -> None:
+        # a real revert that also says "continue with X" must still be captured
+        cands = scan_transcript([user_text("revert that, wrong approach, then continue")])
+        self.assertEqual(len(cands), 1)
+        self.assertEqual(cands[0].type, "misalignment")
+
+    def test_real_assertion_failure_in_app_code_still_captured(self) -> None:
+        # a bare AssertionError from non-test code is a real bug, not TDD noise
+        entries = [
+            asst("Bash", "a", command="py -m paw route --check"),
+            result("a", is_error=True, content="AssertionError: budget must be positive"),
+        ]
+        cands = scan_transcript(entries)
+        self.assertEqual(len(cands), 1)
+        self.assertEqual(cands[0].type, "execution")
+
+    def test_real_env_lesson_still_captured(self) -> None:
+        # the #4-class survivor: a genuine env gotcha (PYTHONPATH) is a real lesson
+        entries = [
+            asst("Bash", "a", command="py -m paw blackboard write"),
+            result("a", is_error=True, content="ModuleNotFoundError: No module named 'paw'"),
+            asst("Bash", "b", command="cd E:/portable-harness && PYTHONPATH=. py -m paw blackboard write"),
+            result("b", is_error=False, content="ok"),
+        ]
+        cands = scan_transcript(entries)
+        self.assertEqual(len(cands), 1)
+        self.assertIn("fixed by", cands[0].detail)
+
 
 def cdx_call(name: str, cid: str, **args) -> dict:
     return {"type": "response_item", "payload": {

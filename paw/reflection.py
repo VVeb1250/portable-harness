@@ -62,6 +62,48 @@ _NON_ERROR = re.compile(
     re.I,
 )
 
+# Mechanical agent/harness-contract errors (read-before-write, stale-edit, no-match).
+# Already enforced by the tool layer and recovered in-session — storing them as
+# "lessons" adds nothing the harness doesn't already force. Pure pending noise.
+_HARNESS_NOISE = re.compile(
+    r"file has not been read yet|string to replace not found|"
+    r"file has (?:already )?been (?:read|modified)|"
+    r"has been (?:unexpectedly )?modified since|"
+    r"no replacement was performed|old_string|"
+    r"must read the file|cannot apply edit",
+    re.I,
+)
+
+# Test-runner output. A failing test during normal red→green TDD is expected
+# iteration, not a mistake — this is the single biggest pending-flood source
+# (HANDOFF: "...F [100%] → fixed by ..."). Suppress exec candidates whose error
+# text is a test report.
+_TEST_FAIL = re.compile(
+    r"=+ (?:FAILURES|ERRORS|short test summary) =+|"
+    r"\b\d+ failed(?:,| \b)|\bFAILED\s|\bF+\s*\[\s*\d+%\]|"
+    r"\btests? failed\b",
+    re.I,
+)
+
+# Throwaway inline probes (py -c / python -c / node -e). Scratch one-liners used to
+# poke at state during exploration — a failure here is iteration, not a workflow
+# lesson worth remembering.
+_PROBE_CMD = re.compile(r"^\s*(?:py|python\d?|node)\s+-[ce]\b", re.I)
+
+# The user waving off their own slip ("misclicked, continue") rather than correcting
+# the agent's approach. The correction marker fires on the slip word but the turn
+# dismisses it — only a strong, agent-directed marker survives a dismissal.
+_DISMISSAL = re.compile(
+    r"\b(?:continue|proceed|go on|carry on|keep going|never ?mind|ignore (?:that|it)|as you were)\b"
+    r"|ต่อเลย|ต่อได้เลย|เอาต่อ|ไปต่อ|ทำต่อ|ช่างมัน|ข้ามไป|ไม่เป็นไร",
+    re.I,
+)
+_STRONG_CORRECTION = re.compile(
+    r"\b(?:revert|undo|rollback|roll back|wrong (?:approach|file|fix|way)|"
+    r"that'?s (?:wrong|not)|don'?t do that)\b|ไม่ใช่|ย้อนกลับ|แก้ใหม่|ทำผิด",
+    re.I,
+)
+
 
 # --------------------------------------------------------------------------- #
 # transcript parsing (stdlib, fail-soft per line)
@@ -340,6 +382,12 @@ def _exec_candidates(events: list[dict]) -> list[Candidate]:
         if _NON_ERROR.search(ev["text"]):   # user denial / nah guard — not a mistake
             continue
         cmd = _cmd_of(ev)
+        # noise gates: mechanical harness errors, TDD red-phase test output, and
+        # throwaway inline probes are expected iteration, not durable lessons.
+        if _HARNESS_NOISE.search(ev["text"]) or _TEST_FAIL.search(ev["text"]):
+            continue
+        if _PROBE_CMD.match(cmd):
+            continue
         err = _first_err_line(ev["text"])
         fix = ""
         for nxt in events[i + 1:]:
@@ -363,6 +411,10 @@ def _misalign_candidates(texts: list[str]) -> list[Candidate]:
         # terse turns only — long turns are specs/instructions that merely mention
         # a correction word, not corrections themselves
         if len(text) > _MISALIGN_MAXLEN or not _CORRECTION.search(text):
+            continue
+        # a self-slip waved off ("misclicked, continue") is a dismissal, not a
+        # correction of the agent — only a strong agent-directed marker survives it
+        if _DISMISSAL.search(text) and not _STRONG_CORRECTION.search(text):
             continue
         snippet = re.sub(r"\s+", " ", text)[:130]
         out.append(Candidate(
