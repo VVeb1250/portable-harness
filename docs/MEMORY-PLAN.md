@@ -113,7 +113,7 @@ classifies + extracts the real lesson + discards false positives.
 | 2 | `paw/reflection.py` capture: parse transcript → multi-signal candidates → ICM `pending` topic + type guess; `paw reflect --capture`; Stop-hook shim | hook = manual |
 | 3 | SessionStart surface (if pending) → reflect: extract atomic + classify + reconcile ADD/UPDATE/DELETE/NOOP vs recall top-K → write wiki + recurrence(`seen:N`+escalate) + `related_ids` + clear pending | hook = manual |
 | 4 | bench reflection engine — arms: heuristic / DeepSeek-dedicated / live-CC / live-Codex; metrics: token, latency, $, lesson precision/recall vs gold, noise rate, **cross-host quality variance** | — |
-| 5 | suggest-graduate (`seen:N≥thr` + procedural-shape → flag candidate skill); periodic `icm consolidate` | — |
+| 5 | suggest-graduate (`seen:N≥thr` + procedural-shape → flag candidate skill); periodic `icm consolidate` **⚠️ only with `--keep-originals` AND `--summarizer-provider <llm>`** (bare/provider=none JOINS the whole topic into one ' \| ' blob and DELETES originals — lossy, not summarization) | — |
 
 ## Open risks
 - Codex Stop payload/transcript schema (Phase 0 residual) → gates Codex capture.
