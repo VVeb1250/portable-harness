@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import sys
 from pathlib import Path
 
@@ -38,6 +39,7 @@ from paw.team_adapters import (
     make_mutation_runner,
 )
 from paw.team_kernel import EvaluationResult, RoleOutput, TeamKernel, TeamKernelContext
+from paw.verification import make_verification_evaluator
 
 
 def _sets_list() -> int:
@@ -255,6 +257,17 @@ def _team(args: argparse.Namespace) -> int:
         mutation_runner = make_mutation_runner(
             repo=Path.cwd(), dry_run=args.mutate == "dry",
         )
+
+    # --verify swaps in an evaluator that actually checks the mutated tree, closing
+    # the mutate->verify->revise loop (the kernel already feeds a fail back into the
+    # next iteration). --verify-cmd runs an explicit command; --verify compileall
+    # focuses on just the Python files the mutation touched.
+    if args.verify_cmd:
+        evaluator = make_verification_evaluator(
+            repo=Path.cwd(), command=shlex.split(args.verify_cmd),
+        )
+    elif args.verify == "compileall":
+        evaluator = make_verification_evaluator(repo=Path.cwd())
 
     try:
         result = TeamKernel(
@@ -594,6 +607,18 @@ def main(argv: list[str] | None = None) -> int:
         default="off",
         help="apply implementer SEARCH/REPLACE edits to the cwd tree: off (handoff "
         "only), dry (compute diff, write nothing), apply (write with backup+rollback)",
+    )
+    team_run.add_argument(
+        "--verify",
+        choices=("off", "compileall"),
+        default="off",
+        help="verify the mutated tree before passing: compileall checks just the "
+        "Python files the mutation touched, feeding failures into the revise loop",
+    )
+    team_run.add_argument(
+        "--verify-cmd",
+        help="explicit verification command run in the cwd (e.g. a focused test "
+        "subset); overrides --verify and drives the same revise loop",
     )
     team_run.add_argument("--db", help="ICM SQLite path; omit to use configured memory")
     team_run.add_argument("--json", action="store_true")

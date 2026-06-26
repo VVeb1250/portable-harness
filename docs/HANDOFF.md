@@ -103,10 +103,12 @@ Ordered next work:
    (`apply_to_tree`): transactional SEARCH/REPLACE apply with backup + rollback +
    path-traversal guard + unified-diff artifact; wired via
    `team_adapters.make_mutation_runner` and `paw team run --mutate {off,dry,apply}`.
-2. **(now the top open item)** Implement a focused verification runner (affected
-   tests, `compileall`, selected `paw verify`, or explicit command artifact) that
-   runs against the **mutated** tree and feeds its output into the existing
-   evaluator loop. This closes the mutate→verify→revise cycle.
+2. ~~Implement a focused verification runner~~ **DONE 2026-06-26** —
+   `paw/verification.py` (`make_verification_evaluator`): `compileall` focused on
+   the Python files the mutation touched (parsed from the diff) or an explicit
+   `--verify-cmd`; a failure feeds the kernel's revise loop, closing
+   mutate→verify→revise (proven no-fakes). CLI `paw team run --verify
+   {off,compileall} [--verify-cmd CMD]`.
 3. Add CI that runs Python/runtime surfaces on `paw/**`, `tests/**`, and docs
    changes. Current GitHub workflow for bundle smoke is green, but path filters
    do not cover the latest Team Kernel code.
