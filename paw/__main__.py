@@ -20,9 +20,25 @@ from paw.blackboard import (
     BlackboardScope,
     IcmBlackboard,
 )
+from paw.codebase_memory import (
+    codebase_memory_project_name,
+    format_search_output,
+    parse_search_output,
+    require_binary,
+    run_codebase_memory_tool,
+)
 from paw.linker import LinkerError, apply_plan, build_plan, remove, verify
+from paw.memory_hook import (
+    build_config,
+    hook_stdout,
+    install_memory_hooks,
+    load_hook_payload,
+    run_memory_hook,
+)
+from paw.memory_mesh import MemoryMesh, MeshResult, MeshScope
 from paw.recall import recall as recall_memory
 from paw.curate import curate as curate_pending
+from paw.doctor import render_report, run_doctor
 from paw.reflection import (
     capture as reflect_capture,
     load_watermark,
@@ -44,7 +60,12 @@ from paw.verification import make_verification_evaluator
 
 def _sets_list() -> int:
     for s in load_all():
-        print(f"  {s.name:<18} mcp={s.mcp_count} non_mcp={len(s.non_mcp)}  — {s.description[:70]}")
+        init = "init" if s.default_init else "opt"
+        print(
+            f"  {s.name:<18} {init:<4} scope={s.link_scope:<11} "
+            f"bench={s.bench_status:<12} mcp={s.mcp_count} non_mcp={len(s.non_mcp)}  "
+            f"— {s.description[:60]}"
+        )
     return 0
 
 
@@ -54,8 +75,30 @@ def _sets_show(name: str) -> int:
     except SetsError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    print(f"{s.name}  (mcp={s.mcp_count}, non_mcp={len(s.non_mcp)})")
+    print(
+        f"{s.name}  (mcp={s.mcp_count}, non_mcp={len(s.non_mcp)}, "
+        f"scope={s.link_scope}, default_init={str(s.default_init).lower()})"
+    )
     print(s.description)
+    print(
+        f"\nstatus: catalog={s.catalog_status} · tier={s.foundation_tier} · "
+        f"bench={s.bench_status}"
+    )
+    if s.token_tax:
+        idle = s.token_tax.get("idle_mcp", "?")
+        runtime = s.token_tax.get("runtime_output", "?")
+        print(f"token_tax: idle_mcp={idle} · runtime_output={runtime}")
+    if s.platforms:
+        platform_bits = " · ".join(f"{name}={support}" for name, support in s.platforms.items())
+        print(f"platforms: {platform_bits}")
+    if s.evidence:
+        bench = s.evidence.get("local_bench") or s.evidence.get("source")
+        if bench:
+            print(f"evidence: {bench}")
+    if s.privacy:
+        telemetry = s.privacy.get("telemetry", "?")
+        network = s.privacy.get("network", "?")
+        print(f"privacy: telemetry={telemetry} · network={network}")
     if s.trigger_terms:
         print(f"\ntrigger: {', '.join(s.trigger_terms)}")
     if s.mcp:
@@ -145,6 +188,45 @@ def _print_blackboard_result(result: BlackboardResult, as_json: bool) -> int:
     return 0 if result.status != "error" else 1
 
 
+def _print_mesh_result(result: MeshResult, as_json: bool) -> int:
+    if as_json:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(result.summary)
+        if result.members:
+            print("members:")
+            for member in result.members:
+                state = "active" if member.active else "stale"
+                print(
+                    f"  - {member.member} [{state}] host={member.host} "
+                    f"role={member.role} last_seen={member.last_seen:.0f}"
+                )
+        if result.events:
+            print("events:")
+            for event in result.events:
+                print(
+                    f"  - #{event.seq} [{event.lane}·{event.kind}] "
+                    f"{event.member}: {event.content}"
+                )
+                if event.artifact:
+                    print(f"    artifact: {event.artifact}")
+                if event.promoted_from is not None:
+                    print(f"    promoted_from: {event.promoted_from}")
+        if result.locks:
+            print("locks:")
+            for lock in result.locks:
+                print(
+                    f"  - {lock.name}: owner={lock.owner} "
+                    f"expires={lock.expires_at:.0f} purpose={lock.purpose}"
+                )
+        print(f"cursor: {result.cursor}")
+        if result.next_actions:
+            print("next:")
+            for action in result.next_actions:
+                print(f"  - {action}")
+    return 0 if result.status != "error" else 1
+
+
 def _blackboard(args: argparse.Namespace) -> int:
     board = IcmBlackboard(database=Path(args.db) if args.db else None)
     scope = BlackboardScope(project=args.project, run_id=args.run_id)
@@ -168,6 +250,114 @@ def _blackboard(args: argparse.Namespace) -> int:
         limit=args.limit,
     )
     return _print_blackboard_result(result, args.json)
+
+
+def _memory_mesh(args: argparse.Namespace) -> int:
+    if args.memory_action == "install-hooks":
+        hosts = ("claude-code", "codex") if args.host == "all" else (args.host,)
+        results = []
+        for host in hosts:
+            path = Path(args.config_path) if args.config_path and len(hosts) == 1 else None
+            results.append(install_memory_hooks(host=host, config_path=path))
+        if args.json:
+            print(json.dumps([result.to_dict() for result in results], ensure_ascii=False, indent=2))
+        else:
+            for result in results:
+                print(f"{result.summary} ({result.path})")
+        return 0 if all(result.status == "success" for result in results) else 1
+
+    if args.memory_action == "hook":
+        raw = sys.stdin.buffer.read().decode("utf-8", "ignore") if not sys.stdin.isatty() else ""
+        payload = load_hook_payload(raw)
+        config = build_config(
+            payload,
+            host=args.host,
+            event=args.event,
+            project=args.project,
+            run_id=args.run_id,
+            member=args.member,
+            role=args.role,
+            state_dir=Path(args.state_dir) if args.state_dir else None,
+            hook_state_dir=Path(args.hook_state_dir) if args.hook_state_dir else None,
+        )
+        try:
+            result = run_memory_hook(config)
+            if args.json:
+                print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+            else:
+                out = hook_stdout(result, hook_event_name=_hook_event_name(args.event))
+                if out:
+                    print(out)
+            return 0
+        except Exception:
+            return 0
+
+    mesh = MemoryMesh(root=Path(args.state_dir) if args.state_dir else None)
+    scope = MeshScope(project=args.project, run_id=args.run_id)
+    action = args.memory_action
+    if action == "register":
+        result = mesh.register(
+            scope,
+            member=args.member,
+            host=args.host,
+            role=args.role,
+            session_id=args.session_id,
+            capabilities=tuple(args.capability),
+            ttl_seconds=args.ttl_seconds,
+        )
+    elif action == "heartbeat":
+        result = mesh.heartbeat(scope, member=args.member)
+    elif action == "members":
+        result = mesh.members(scope)
+    elif action == "post":
+        result = mesh.post(
+            scope,
+            member=args.member,
+            lane=args.lane,
+            kind=args.kind,
+            content=args.content,
+            artifact=args.artifact,
+        )
+    elif action == "promote":
+        result = mesh.promote(
+            scope,
+            member=args.member,
+            seq=args.seq,
+            kind=args.kind,
+        )
+    elif action == "poll":
+        result = mesh.poll(
+            scope,
+            member=args.member,
+            since=args.since,
+            include_private=not args.shared_only,
+        )
+    elif action == "lock-acquire":
+        result = mesh.acquire_lock(
+            scope,
+            name=args.name,
+            owner=args.owner,
+            purpose=args.purpose,
+            ttl_seconds=args.ttl_seconds,
+        )
+    elif action == "lock-release":
+        result = mesh.release_lock(
+            scope,
+            name=args.name,
+            owner=args.owner,
+            force=args.force,
+        )
+    else:
+        return 2
+    return _print_mesh_result(result, args.json)
+
+
+def _hook_event_name(event: str) -> str:
+    return {
+        "session-start": "SessionStart",
+        "user-prompt": "UserPromptSubmit",
+        "stop": "Stop",
+    }.get(event, event)
 
 
 def _mock_planner(context: TeamKernelContext) -> RoleOutput:
@@ -407,6 +597,56 @@ def _curate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _doctor(args: argparse.Namespace, *, command: str) -> int:
+    hosts = tuple(args.host) if args.host else ("claude-code", "codex", "gemini")
+    report = run_doctor(root=Path(args.root) if args.root else Path.cwd(), hosts=hosts)
+    if args.json:
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(render_report(report, command=command))
+    return 0 if report.status == "healthy" else 1
+
+
+def _codebase_memory(args: argparse.Namespace) -> int:
+    try:
+        if args.codebase_memory_action == "project-name":
+            print(codebase_memory_project_name(Path(args.path).resolve()))
+            return 0
+        binary = require_binary(Path(args.root) if args.root else Path.cwd(), args.binary)
+        if args.codebase_memory_action == "index":
+            repo = Path(args.path).resolve()
+            result = run_codebase_memory_tool(
+                "index_repository",
+                {"repo_path": repo.as_posix()},
+                binary=binary,
+                timeout=args.timeout,
+            )
+        elif args.codebase_memory_action == "search":
+            payload: dict[str, object] = {"project": args.project}
+            if args.name_pattern:
+                payload["name_pattern"] = args.name_pattern
+            result = run_codebase_memory_tool(
+                "search_graph",
+                payload,
+                binary=binary,
+                timeout=args.timeout,
+            )
+        else:
+            return 2
+    except (FileNotFoundError, TimeoutError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    if args.codebase_memory_action == "search":
+        output = parse_search_output(result)
+        print(format_search_output(output, limit=args.limit, json_mode=args.json))
+    elif args.json:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    elif result.combined:
+        print(result.combined)
+    return result.returncode
+
+
 def _print_tx(result, as_json: bool) -> int:
     if as_json:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
@@ -463,6 +703,35 @@ def _add_linker_args(parser: argparse.ArgumentParser, *, with_scope: bool) -> No
     if with_scope:
         parser.add_argument("--scope", default="project", choices=("project", "user"))
     parser.add_argument("--json", action="store_true")
+
+
+def _pack(args: argparse.Namespace) -> int:
+    """Wrap code2prompt: pack a subtree into an LLM-context file with token count.
+
+    Includes a scope guard that refuses broad root packs unless scoped
+    with ``--include``, ``--diff``, or ``--allow-large``.
+    """
+    from paw.repo_pack import GuardRefused, guard_broad_pack, run_vendored_code2prompt
+
+    path = Path(args.path).resolve()
+    try:
+        guard_broad_pack(
+            path,
+            has_include=bool(args.include),
+            has_diff=bool(args.diff),
+            allow_large=bool(args.allow_large),
+        )
+    except GuardRefused as exc:
+        print(f"error: {exc.message}", file=sys.stderr)
+        return 1
+
+    return run_vendored_code2prompt(
+        path,
+        output=args.output,
+        diff=args.diff,
+        include=args.include,
+        exclude=args.exclude,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -559,6 +828,126 @@ def main(argv: list[str] | None = None) -> int:
     read.add_argument("--limit", type=int, default=10)
     read.add_argument("--db", help="ICM SQLite path; omit to use configured memory")
     read.add_argument("--json", action="store_true")
+
+    memory = sub.add_parser(
+        "memory",
+        help="coordinate several local agent sessions over shared memory lanes",
+    )
+    memory_sub = memory.add_subparsers(dest="memory_action", required=True)
+
+    def add_memory_scope(mp: argparse.ArgumentParser) -> None:
+        mp.add_argument("--project", required=True)
+        mp.add_argument("--run-id", required=True)
+        mp.add_argument(
+            "--state-dir",
+            help="local memory-mesh state root; default ~/.paw/state/memory-mesh",
+        )
+        mp.add_argument("--json", action="store_true")
+
+    register = memory_sub.add_parser(
+        "register",
+        help="register or refresh one live agent session",
+    )
+    add_memory_scope(register)
+    register.add_argument("--member", required=True, help="stable member id, e.g. codex-1")
+    register.add_argument("--host", required=True, help="agent host/vendor, e.g. codex")
+    register.add_argument("--role", help="team role; defaults to member id")
+    register.add_argument("--session-id")
+    register.add_argument(
+        "--capability",
+        action="append",
+        default=[],
+        help="member capability tag; may be repeated",
+    )
+    register.add_argument("--ttl-seconds", type=int, default=300)
+
+    heartbeat = memory_sub.add_parser("heartbeat", help="refresh one member heartbeat")
+    add_memory_scope(heartbeat)
+    heartbeat.add_argument("--member", required=True)
+
+    members = memory_sub.add_parser("members", help="list active and stale members")
+    add_memory_scope(members)
+
+    post = memory_sub.add_parser("post", help="post to the shared or private lane")
+    add_memory_scope(post)
+    post.add_argument("--member", required=True)
+    post.add_argument("--content", required=True)
+    post.add_argument("--lane", choices=("shared", "private"), default="shared")
+    post.add_argument("--kind", default="note")
+    post.add_argument("--artifact")
+
+    promote = memory_sub.add_parser(
+        "promote",
+        help="copy an owned private-lane event into the shared lane",
+    )
+    add_memory_scope(promote)
+    promote.add_argument("--member", required=True)
+    promote.add_argument("--seq", type=int, required=True)
+    promote.add_argument("--kind", default="note")
+
+    poll = memory_sub.add_parser(
+        "poll",
+        help="read shared events plus this member's private lane since a cursor",
+    )
+    add_memory_scope(poll)
+    poll.add_argument("--member")
+    poll.add_argument("--since", type=int, default=0)
+    poll.add_argument("--shared-only", action="store_true")
+
+    lock_acquire = memory_sub.add_parser(
+        "lock-acquire",
+        help="claim a short-lived write-intent lock",
+    )
+    add_memory_scope(lock_acquire)
+    lock_acquire.add_argument("--name", required=True)
+    lock_acquire.add_argument("--owner", required=True)
+    lock_acquire.add_argument("--purpose", default="")
+    lock_acquire.add_argument("--ttl-seconds", type=int, default=300)
+
+    lock_release = memory_sub.add_parser("lock-release", help="release a write-intent lock")
+    add_memory_scope(lock_release)
+    lock_release.add_argument("--name", required=True)
+    lock_release.add_argument("--owner", required=True)
+    lock_release.add_argument("--force", action="store_true")
+
+    hook = memory_sub.add_parser(
+        "hook",
+        help="hook-safe auto register/heartbeat/poll shim for Claude, Codex, Gemini",
+    )
+    hook.add_argument("--host", required=True, choices=("claude-code", "codex", "gemini"))
+    hook.add_argument(
+        "--event",
+        required=True,
+        choices=("session-start", "user-prompt", "stop"),
+    )
+    hook.add_argument("--project", help="default: payload project or cwd basename")
+    hook.add_argument("--run-id", help="default: PAW_MEMORY_RUN_ID or live")
+    hook.add_argument("--member", help="default: host + stable session hash")
+    hook.add_argument("--role", help="default: host")
+    hook.add_argument(
+        "--state-dir",
+        help="local memory-mesh state root; default ~/.paw/state/memory-mesh",
+    )
+    hook.add_argument(
+        "--hook-state-dir",
+        help="cursor state root; default ~/.paw/state/memory-hooks",
+    )
+    hook.add_argument("--json", action="store_true")
+
+    install_hooks = memory_sub.add_parser(
+        "install-hooks",
+        help="add memory hook shim to Claude/Codex hook config (add-only, idempotent)",
+    )
+    install_hooks.add_argument(
+        "--host",
+        choices=("claude-code", "codex", "all"),
+        default="all",
+    )
+    install_hooks.add_argument(
+        "--config-path",
+        help="override one host config path; only valid when --host is not all",
+    )
+    install_hooks.add_argument("--json", action="store_true")
 
     team = sub.add_parser(
         "team",
@@ -659,6 +1048,67 @@ def main(argv: list[str] | None = None) -> int:
     curate_p.add_argument("--limit", type=int, help="cap how many pending entries to process")
     curate_p.add_argument("--json", action="store_true")
 
+    pack_p = sub.add_parser(
+        "pack",
+        help="pack a subtree into an LLM-context file via code2prompt (repo-pack set)",
+    )
+    pack_p.add_argument("path", nargs="?", default=".", help="directory to pack (default: cwd)")
+    pack_p.add_argument("-o", "--output", help="write packed context to this file")
+    pack_p.add_argument("-d", "--diff", action="store_true", help="append git diff")
+    pack_p.add_argument("--include", action="append", default=[], metavar="GLOB")
+    pack_p.add_argument("--exclude", action="append", default=[], metavar="GLOB")
+    pack_p.add_argument("--allow-large", action="store_true", help="override root-pack guard")
+
+    doctor_p = sub.add_parser(
+        "doctor",
+        help="check default core tools, linker state, and host restart advice",
+    )
+    doctor_p.add_argument(
+        "--host",
+        action="append",
+        choices=("claude-code", "codex", "gemini"),
+        help="host to inspect; may be repeated (default: all known paw hosts)",
+    )
+    doctor_p.add_argument("--root", help="project root to inspect (default: cwd)")
+    doctor_p.add_argument("--json", action="store_true")
+
+    init_p = sub.add_parser(
+        "init",
+        help="safe foundation-core readiness check; prints installs, does not auto-install",
+    )
+    init_p.add_argument(
+        "--host",
+        action="append",
+        choices=("claude-code", "codex", "gemini"),
+        help="host to inspect; may be repeated (default: all known paw hosts)",
+    )
+    init_p.add_argument("--root", help="project root to inspect (default: cwd)")
+    init_p.add_argument("--json", action="store_true")
+
+    cbm = sub.add_parser(
+        "codebase-memory",
+        help="Windows-safe argv wrapper for codebase-memory-mcp CLI JSON calls",
+    )
+    cbm_sub = cbm.add_subparsers(dest="codebase_memory_action", required=True)
+    cbm_name = cbm_sub.add_parser("project-name", help="print codebase-memory project id")
+    cbm_name.add_argument("path", nargs="?", default=".")
+
+    cbm_index = cbm_sub.add_parser("index", help="index a repository without shell JSON quoting")
+    cbm_index.add_argument("path", nargs="?", default=".")
+    cbm_index.add_argument("--binary", help="path to codebase-memory-mcp binary")
+    cbm_index.add_argument("--root", help="project root used to find bench/_tools binary")
+    cbm_index.add_argument("--timeout", type=int, default=120)
+    cbm_index.add_argument("--json", action="store_true")
+
+    cbm_search = cbm_sub.add_parser("search", help="search graph without shell JSON quoting")
+    cbm_search.add_argument("--project", required=True)
+    cbm_search.add_argument("--name-pattern")
+    cbm_search.add_argument("--limit", type=int, default=10, help="max rows (default: 10; 0 = all)")
+    cbm_search.add_argument("--binary", help="path to codebase-memory-mcp binary")
+    cbm_search.add_argument("--root", help="project root used to find bench/_tools binary")
+    cbm_search.add_argument("--timeout", type=int, default=45)
+    cbm_search.add_argument("--json", action="store_true")
+
     plan_p = sub.add_parser("plan", help="preview wiring a CLI set into a host (no mutation)")
     _add_linker_args(plan_p, with_scope=True)
     apply_p = sub.add_parser("apply", help="wire a CLI set into a host (drift-guarded, backed up)")
@@ -671,6 +1121,12 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     if args.group in ("plan", "apply", "verify", "remove"):
         return _linker(args)
+    if args.group == "doctor":
+        return _doctor(args, command="doctor")
+    if args.group == "init":
+        return _doctor(args, command="init")
+    if args.group == "codebase-memory":
+        return _codebase_memory(args)
     if args.group == "sets":
         if args.action == "list":
             return _sets_list()
@@ -682,8 +1138,12 @@ def main(argv: list[str] | None = None) -> int:
         return _suggest(args)
     if args.group == "blackboard":
         return _blackboard(args)
+    if args.group == "memory":
+        return _memory_mesh(args)
     if args.group == "team":
         return _team(args)
+    if args.group == "pack":
+        return _pack(args)
     if args.group == "recall":
         return _recall(args)
     if args.group == "reflect":

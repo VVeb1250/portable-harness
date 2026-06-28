@@ -30,7 +30,18 @@ enabled = false
 # Project-scoped live test; do not promote globally until STATUS.md's gate passes.
 [mcp_servers.context-mode]
 command = "context-mode"
-startup_timeout_sec = 30
+args = []
 
-[mcp_servers.context-mode.env]
-CONTEXT_MODE_PLATFORM = "codex"
+[mcp_servers.semble]
+command = "uvx"
+args = ["--from", "semble[mcp]", "semble"]
+
+[mcp_servers.fetch]
+command = "uvx"
+args = ["mcp-server-fetch"]
+
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+
+[mcp_servers.context7.env]

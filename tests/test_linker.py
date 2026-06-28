@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import json
 import os
@@ -53,6 +54,27 @@ class LinkerSliceZeroTests(unittest.TestCase):
         self.assertEqual(plan.status, "blocked")
         self.assertTrue(any(w.startswith("BLOCK:") for w in plan.warnings))
 
+    def test_detect_first_foundation_is_not_blindly_installed(self) -> None:
+        plan = build_plan(
+            "harness-foundation", host="codex", context=str(self.ctx), root=self.root
+        )
+
+        self.assertEqual(plan.status, "blocked")
+        self.assertEqual(plan.actions, ())
+        self.assertEqual(plan.to_dict()["wire_policy"], "detect-first")
+        self.assertTrue(any("detect-first" in w for w in plan.warnings))
+
+    def test_conditional_sets_surface_wire_tradeoff_warning(self) -> None:
+        plan = build_plan(
+            "test-affected", host="codex", context=str(self.ctx), root=self.root
+        )
+
+        self.assertEqual(plan.status, "ok")
+        self.assertEqual(plan.to_dict()["wire_policy"], "conditional")
+        self.assertIn("WIRE-DECISION-MATRIX", plan.to_dict()["wire_reason"])
+        self.assertTrue(any("CONDITIONAL:" in w for w in plan.warnings))
+        self.assertTrue(any("WIRE-DECISION-MATRIX" in w for w in plan.warnings))
+
     # --- apply --------------------------------------------------------------
     def test_apply_injects_block_preserves_content_and_records_ledger(self) -> None:
         result = apply_plan(self._plan(), root=self.root)
@@ -70,6 +92,43 @@ class LinkerSliceZeroTests(unittest.TestCase):
         apply_plan(self._plan(), root=self.root)
         text = self.ctx.read_text(encoding="utf-8")
         self.assertEqual(text.count("<!-- paw:repo-pack:start -->"), 1)
+
+    def test_applying_second_set_refreshes_shared_context_fingerprints(self) -> None:
+        apply_plan(build_plan("repo-pack", context=str(self.ctx), root=self.root), root=self.root)
+        apply_plan(build_plan("data-query", context=str(self.ctx), root=self.root), root=self.root)
+
+        self.assertNotEqual(
+            verify("repo-pack", context=str(self.ctx), root=self.root).health,
+            "drifted",
+        )
+        self.assertNotEqual(
+            verify("data-query", context=str(self.ctx), root=self.root).health,
+            "drifted",
+        )
+
+    def test_same_set_can_be_linked_to_multiple_hosts_without_ledger_collision(self) -> None:
+        codex_ctx = self.root / "AGENTS.md"
+        claude_ctx = self.root / "CLAUDE.md"
+        codex_ctx.write_text("# codex\n", encoding="utf-8")
+        claude_ctx.write_text("# claude\n", encoding="utf-8")
+
+        apply_plan(
+            build_plan("repo-pack", host="codex", context=str(codex_ctx), root=self.root),
+            root=self.root,
+        )
+        apply_plan(
+            build_plan(
+                "repo-pack", host="claude-code", context=str(claude_ctx), root=self.root
+            ),
+            root=self.root,
+        )
+
+        codex = verify("repo-pack", host="codex", context=str(codex_ctx), root=self.root)
+        claude = verify(
+            "repo-pack", host="claude-code", context=str(claude_ctx), root=self.root
+        )
+        self.assertNotEqual(codex.health, "drifted")
+        self.assertNotEqual(claude.health, "drifted")
 
     def test_apply_refuses_a_stale_plan_after_drift(self) -> None:
         stale = self._plan()  # captures the pre-edit fingerprint
@@ -104,6 +163,18 @@ class LinkerSliceZeroTests(unittest.TestCase):
         self.assertIn("original content", text)
         ledger = self.root / ".paw" / "state.json"
         self.assertNotIn("\"repo-pack\"", ledger.read_text(encoding="utf-8"))
+
+    def test_removing_one_set_refreshes_shared_context_fingerprints(self) -> None:
+        apply_plan(build_plan("repo-pack", context=str(self.ctx), root=self.root), root=self.root)
+        apply_plan(build_plan("data-query", context=str(self.ctx), root=self.root), root=self.root)
+
+        result = remove("data-query", context=str(self.ctx), root=self.root)
+
+        self.assertEqual(result.status, "ok")
+        self.assertNotEqual(
+            verify("repo-pack", context=str(self.ctx), root=self.root).health,
+            "drifted",
+        )
 
     def test_remove_refuses_after_user_drift(self) -> None:
         apply_plan(self._plan(), root=self.root)
@@ -154,7 +225,8 @@ class BinaryResolutionTests(unittest.TestCase):
         ctx = self.root / "CLAUDE.md"
         ctx.write_text("# project\n", encoding="utf-8")
         # api-quality ships hurl with a per-OS install recipe; not on PATH/bin here.
-        plan = build_plan("api-quality", context=str(ctx), root=self.root)
+        with mock.patch("paw.linker.which", return_value=None):
+            plan = build_plan("api-quality", context=str(ctx), root=self.root)
         detect = next(a for a in plan.actions if a.kind == "detect-binary")
         self.assertIn("install:", detect.summary)
 

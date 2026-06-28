@@ -1,10 +1,15 @@
 # paw — Agent Operating Manual
 
-> Canonical source for the **port-a-whip (paw)** harness brain. `paw link <set>` injects the
-> relevant slices of this file into each host's native context file (Codex `AGENTS.md`,
-> Claude Code `CLAUDE.md` via `@import`, Gemini `GEMINI.md`) inside a managed
-> `<!-- paw:start -->`…`<!-- paw:end -->` block. **Do not hand-edit the injected block** — edit
-> this source and re-link. Hand-edit anything *outside* the markers freely.
+> Future linker source, not the current session truth. For current state and
+> next work, read `docs/README.md`, `docs/STATUS.md`, and
+> `docs/NO-DAEMON-BASELINE-BACKLOG.md` first. If this file conflicts with those
+> docs, treat this file as stale and update it before re-linking.
+
+> Future managed-block source for the **port-a-whip (paw)** harness brain. The
+> current CLI uses `python -m paw plan|apply|verify|remove <set>`. A future
+> linker may inject relevant slices of this file into host context files inside
+> a managed `<!-- paw:start -->`…`<!-- paw:end -->` block. **Do not hand-edit
+> generated blocks** — edit this source and re-link/re-apply.
 
 paw is a **curated, cross-host agent harness**: one install wires a vetted bundle of tools plus a
 shared memory brain into whatever coding agent you run (Claude Code / Codex / Gemini / …). The moat
@@ -28,16 +33,19 @@ not the rule (see Token discipline).
 
 ## Memory protocol (ICM) — do this every session
 
-Single source of truth = **ICM**. The old `portaw memory` path is a no-op shim; route through ICM.
+Single source of truth = **ICM**. The old `portaw memory` path is retired; route through ICM and
+`python -m paw ...`.
 
-- **Recall before acting** on anything non-trivial: `icm recall "<question>"` (or governed: `portaw mem recall "<q>"`).
-- **Store a mistake the moment it bites:** `icm store -t mistakes -c "trigger → fix" -i high -k "<term>"`
+- **Recall before acting** on anything non-trivial: `icm.exe recall "<question>"` on Windows
+  (`icm recall "<question>"` elsewhere).
+- **Store a mistake the moment it bites:** `icm.exe store -t mistakes -c "trigger -> fix" -i high -k "<term>"`
   (`-i critical` for an always-on env-level lesson). Don't wait for end of session.
-- **Curate:** `icm forget <id>` · `icm consolidate`.
+- **Curate carefully:** `python -m paw curate --dry-run --limit 10` before applying. Do not drain
+  noisy `pending` entries blindly.
 - **PowerShell gotcha:** call `icm.exe` — bare `icm` is an alias for `Invoke-Command`.
-- Health check: `portaw mem status` → expect `icm available: True`. If False, install ICM first
-  (`irm https://raw.githubusercontent.com/rtk-ai/icm/main/install.ps1 | iex` ; `icm init`) and
-  restart the terminal so PATH propagates.
+- Health check today is manual: `icm.exe topics`, `python -m paw sets list`, and
+  `python -m paw memory members --project portable-harness --run-id live`. A one-shot
+  `paw doctor` is backlog work.
 
 A `[HIGH]`/`[critical]` lesson that matches the current action → **surface it to the user before proceeding.**
 
@@ -77,9 +85,9 @@ can block a task.
 
 ## Curated sets
 
-Install a set with `paw link <set>` (write-path landing — until then: `paw sets show <name>` to
-inspect). Each set is vetted for quality **and** mutual compatibility; sets stack without host-surface
-collision unless noted.
+Install or inspect a set with `python -m paw plan|apply|verify|remove <set>` and
+`python -m paw sets show <name>`. Each set is vetted for quality **and** mutual
+compatibility; sets stack without host-surface collision unless noted.
 
 | Set | Axis | What it buys | Active MCP |
 |---|---|---|---|

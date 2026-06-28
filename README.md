@@ -47,7 +47,9 @@ Useful environment:
 
 ## Layout
 
-- `docs/` — design (start at [STATUS.md](docs/STATUS.md) to resume a session):
+- `docs/` — design and operating state (start at [docs/README.md](docs/README.md)):
+  - [STATUS.md](docs/STATUS.md) — current truth; read section 0 first
+  - [NO-DAEMON-BASELINE-BACKLOG.md](docs/NO-DAEMON-BASELINE-BACKLOG.md) — current next work
   - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — layered L0/L1/L2, assumption ledger, **§11 locked design**
   - [SHARED-BRAIN.md](docs/SHARED-BRAIN.md) · [BUNDLE.md](docs/BUNDLE.md) · [BENCH.md](docs/BENCH.md)
 - `paw/` — curated-set registry, explainable router, ICM blackboard adapter,

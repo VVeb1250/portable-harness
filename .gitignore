@@ -25,6 +25,8 @@ venv/
 # bench scratch — fixtures + vendored bundles, regenerable
 bench/out/
 bench/.venv-*/
+bench/_tools/
+bench/code_intelligence/worktree-*/
 
 # testmon (test-affected set) local selection cache
 .testmondata

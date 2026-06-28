@@ -13,6 +13,14 @@
 
 > ไม่ใช่ "seamless model-access" (vendor บล็อก + คนอื่นทำแล้ว) — แต่ "seamless substrate ใต้ agent" = ToS-immune, policy-immune, ของเรา.
 
+**Parallel-memory v0:** L0 now has a small explicit coordination plane via
+`python -m paw memory ...`. If Claude, Codex, Gemini, DeepSeek, and other
+sessions are open at once, they can register/heartbeat, post to shared or
+per-member private lanes, promote private notes to shared memory, poll from a
+cursor, and claim TTL write-intent locks. This is **poll-based coordination**,
+not full orchestration: no hidden agent spawn, no true push notification, and
+no cross-machine transport yet.
+
 ---
 
 ## 1. Foundation = ICM (standalone)
@@ -20,7 +28,7 @@
 [rtk-ai/icm](https://github.com/rtk-ai/icm) — "Permanent memory for AI agents. Single binary, zero deps, MCP-native." (ตระกูลเดียวกับ RTK)
 
 - **multi-host เอง:** `icm init` default = **`standard` = cli + skill + hook, NO MCP** → inject CLAUDE.md/AGENTS.md instructions + slash-cmd + hook ต่อ host (MCP opt-in `--mode mcp/all`). **→ ICM ผ่าน CLI = 0 tool-def tax** (N1-safe). **ไม่ต้องมี portaw.** ⚠️ v0.10.53: host auto-detect อาจ miss ("not detected") → fallback = CLI bridge ผ่าน CLAUDE.md instruction (STATUS §C).
-- **store เดียว ใช้ร่วม:** SQLite local เดียว (`%APPDATA%\Roaming\icm\icm\data\memories.db`); CLI + (opt) MCP เข้าตัวเดียวกัน → host เขียน → host อื่นอ่านเจอ.
+- **store เดียว ใช้ร่วม:** SQLite local เดียว (`%APPDATA%\Roaming\icm\icm\data\memories.db`); CLI + (opt) MCP เข้าตัวเดียวกัน → host เขียน → host อื่นอ่านเจอ. นี่คือ durable shared persistence; `paw memory` เพิ่ม near-live coordination plane ข้าง ๆ.
 - **CLI:** `icm store -t <topic> -c "<content>" -i <critical|high|medium|low> -k "<kw>"` · `icm recall "<q>"` · `icm forget <id>` · `icm consolidate` · `icm topics`.
 - **governance ในตัว:** decay by importance (critical=ไม่ลบ), dedup >85% similar = update ไม่ซ้ำ.
 - **privacy win:** local-only, ไม่มี network write → code/memory ไม่ออกนอกเครื่อง. (คนละเรื่องกับ model-routing ไป GLM = risk ที่ L1)
@@ -37,6 +45,53 @@ paw owns only the protocol glue; ICM owns persistence/search/dedup.
 - reads are bounded (`limit <= 50`) and keyword-oriented
 - secret-like content is rejected before invoking ICM
 - `--db` supports isolated CI/tests without touching the user's configured memory
+- for near-live multi-session work, pair this with `paw memory poll`: blackboard
+  is durable handoff; memory mesh is peer registry, cursor, lanes, and locks
+
+### Parallel memory mesh v0
+
+`paw memory` is the live coordination layer for multiple local AI sessions.
+
+```powershell
+python -m paw memory register --project portable-harness --run-id demo `
+  --member codex-1 --host codex --role planner
+python -m paw memory post --project portable-harness --run-id demo `
+  --member codex-1 --lane private --kind observation --content "scratch finding"
+python -m paw memory promote --project portable-harness --run-id demo `
+  --member codex-1 --seq 2
+python -m paw memory poll --project portable-harness --run-id demo `
+  --member claude-1 --since 0
+python -m paw memory lock-acquire --project portable-harness --run-id demo `
+  --name files-paw --owner codex-1 --purpose "editing paw memory code"
+```
+
+State is local and explicit under `~/.paw/state/memory-mesh` by default. Use
+`--state-dir` for tests or isolated experiments. The mesh never stores
+secret-like content and uses short-lived locks so a dead session does not block
+the run forever.
+
+### Hook shim
+
+The reliability layer is `paw memory hook`: a tiny host-agnostic shim that
+registers/heartbeats the current session, polls new mesh events since the
+member's cursor, and injects only a short summary when something changed.
+
+```powershell
+python -m paw memory install-hooks --host all
+```
+
+Installs add-only hooks for:
+- Claude Code: `~/.claude/settings.json`
+- Codex: `~/.codex/hooks.json`
+
+Events wired:
+- `SessionStart` → register + poll
+- `UserPromptSubmit` → heartbeat + poll
+- `Stop` → heartbeat only
+
+The hook does not dump transcripts, does not spawn agents, and does not write to
+ICM. It only uses the local memory mesh state and returns an additional-context
+block when there are new shared/private events or relevant locks.
 
 ```powershell
 python -m paw blackboard write --project portable-harness --run-id demo `

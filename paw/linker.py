@@ -455,6 +455,8 @@ class ChangePlan:
     context_path: str
     actions: tuple[Action, ...] = ()
     warnings: tuple[str, ...] = ()
+    wire_policy: str = "ready"
+    wire_reason: str = "catalog default"
     schema: str = SCHEMA_PLAN
 
     @property
@@ -509,6 +511,33 @@ def build_plan(
     item = get_set(set_name)  # raises SetsError on unknown
     ctx = _resolve_context(host, context, root)
     warnings: list[str] = []
+    wire_policy = str(item.raw.get("catalog_status") or "ready")
+    wire_reason = "catalog status"
+
+    if item.raw.get("catalog_status") == "detect-first":
+        return ChangePlan(
+            intent="add-set",
+            set_name=set_name,
+            host=host,
+            scope=scope,
+            context_path=str(ctx),
+            actions=(),
+            warnings=(
+                f"BLOCK: {set_name} is detect-first, not a blind installable set. "
+                "Detect existing foundation state and follow docs/ECC-INTEGRATION-LEDGER.md.",
+            ),
+            wire_policy="detect-first",
+            wire_reason=(
+                "foundation install state must be detected before mutation; "
+                "see docs/ECC-INTEGRATION-LEDGER.md"
+            ),
+        )
+    if item.raw.get("catalog_status") == "conditional":
+        wire_reason = "host/workload tradeoff must clear docs/WIRE-DECISION-MATRIX.md"
+        warnings.append(
+            f"CONDITIONAL: {set_name} must clear host/workload tradeoff gates before "
+            "default wiring; review docs/WIRE-DECISION-MATRIX.md and verify after apply."
+        )
 
     # MCP wiring: JSON hosts (CC/gemini) + Codex TOML (comment-preserving).
     mcp_servers: dict[str, dict] = {}
@@ -635,6 +664,8 @@ def build_plan(
         context_path=str(ctx),
         actions=tuple(actions),
         warnings=tuple(warnings),
+        wire_policy=wire_policy,
+        wire_reason=wire_reason,
     )
 
 
@@ -656,10 +687,43 @@ def _load_ledger(root: Path) -> dict:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def _ledger_key(set_name: str, host: str) -> str:
+    return f"{host}:{set_name}"
+
+
+def _ledger_record(data: dict, set_name: str, host: str) -> dict | None:
+    """Host-scoped ledger lookup with legacy fallback for pre-host-key records."""
+    record = data.get("sets", {}).get(_ledger_key(set_name, host))
+    if isinstance(record, dict):
+        return record
+    legacy = data.get("sets", {}).get(set_name)
+    return legacy if isinstance(legacy, dict) and legacy.get("host") == host else None
+
+
+def _pop_ledger_record(data: dict, set_name: str, host: str) -> None:
+    data.get("sets", {}).pop(_ledger_key(set_name, host), None)
+    legacy = data.get("sets", {}).get(set_name)
+    if isinstance(legacy, dict) and legacy.get("host") == host:
+        data["sets"].pop(set_name, None)
+
+
 def _save_ledger(root: Path, data: dict) -> None:
     p = ledger_path(root)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _refresh_context_fingerprints(data: dict, context_path: Path, after: str) -> None:
+    """A context file can contain many paw-owned blocks.
+
+    Applying one more set legitimately changes the file fingerprint for every
+    already-linked set in that same file. Without refreshing sibling records,
+    `verify` misclassifies paw's own later writes as user drift.
+    """
+    resolved = str(context_path)
+    for record in data.get("sets", {}).values():
+        if isinstance(record, dict) and record.get("context_path") == resolved:
+            record["after_fingerprint"] = after
 
 
 # --------------------------------------------------------------------------- #
@@ -725,6 +789,7 @@ def apply_plan(plan: ChangePlan, *, root: Path | None = None) -> TxResult:
     wired: list[str] = []
     primary_backup: str | None = None
 
+    injected_ctx: Path | None = None
     if inject is not None:
         ctx = Path(inject.target)
         backup = _backup(ctx)
@@ -732,6 +797,7 @@ def apply_plan(plan: ChangePlan, *, root: Path | None = None) -> TxResult:
         before = ctx.read_text(encoding="utf-8") if ctx.exists() else ""
         ctx.parent.mkdir(parents=True, exist_ok=True)
         ctx.write_text(inject_block(before, item), encoding="utf-8")
+        injected_ctx = ctx
         record.update(
             context_path=str(ctx),
             block_owner="paw-injected",
@@ -771,7 +837,9 @@ def apply_plan(plan: ChangePlan, *, root: Path | None = None) -> TxResult:
         }
 
     data = _load_ledger(root)
-    data["sets"][plan.set_name] = record
+    if injected_ctx is not None:
+        _refresh_context_fingerprints(data, injected_ctx, fingerprint(injected_ctx))
+    data["sets"][_ledger_key(plan.set_name, plan.host)] = record
     _save_ledger(root, data)
 
     note = " (PATH wired)" if path_wired else ""
@@ -797,7 +865,7 @@ def verify(
     root = root or Path.cwd()
     item = get_set(set_name)
     checks: list[str] = []
-    record = _load_ledger(root)["sets"].get(set_name)
+    record = _ledger_record(_load_ledger(root), set_name, host)
     linked = drifted = degraded = False
 
     if item.non_mcp:
@@ -872,7 +940,7 @@ def remove(
     item = get_set(set_name)
     ctx = _resolve_context(host, context, root)
     data = _load_ledger(root)
-    record = data["sets"].get(set_name)
+    record = _ledger_record(data, set_name, host)
 
     has_ctx_block = bool(
         item.non_mcp and ctx.exists() and has_block(ctx.read_text(encoding="utf-8"), set_name)
@@ -881,7 +949,7 @@ def remove(
     path_wiring = (record or {}).get("path_wiring")
 
     if not has_ctx_block and not mcp_wiring and not path_wiring:
-        data["sets"].pop(set_name, None)
+        _pop_ledger_record(data, set_name, host)
         _save_ledger(root, data)
         return TxResult("ok", f"{set_name} already unlinked", health="blocked")
 
@@ -899,6 +967,7 @@ def remove(
         backup = _backup(ctx)
         ctx.write_text(strip_block(ctx.read_text(encoding="utf-8"), set_name), encoding="utf-8")
         applied.append(f"strip:{set_name}")
+        _refresh_context_fingerprints(data, ctx, fingerprint(ctx))
 
     if mcp_wiring:
         removed = remove_mcp_servers(
@@ -913,7 +982,7 @@ def remove(
         ):
             applied.append(f"unwire-path:{set_name}")
 
-    data["sets"].pop(set_name, None)
+    _pop_ledger_record(data, set_name, host)
     _save_ledger(root, data)
     return TxResult(
         "ok",

@@ -1,7 +1,8 @@
 # BUNDLE — L0 curated tools
 
-> v2 · 2026-06-21 · เจ้าของ: supimol.web@gmail.com · คู่กับ [SHARED-BRAIN](./SHARED-BRAIN.md) · [BENCH](./BENCH.md) · [STATUS](./STATUS.md)
+> v2 · 2026-06-21 · เจ้าของ: supimol.web@gmail.com · คู่กับ [SHARED-BRAIN](./SHARED-BRAIN.md) · [BENCH](./BENCH.md) · [STATUS](./STATUS.md) · [ECC-INTEGRATION-LEDGER](./ECC-INTEGRATION-LEDGER.md) · [WIRE-DECISION-MATRIX](./WIRE-DECISION-MATRIX.md)
 > **2 layer แยกกัน:** *mental model* ยุบ lean (เกือบทุกตัว 0-tax CLI stack อิสระ) · *install UX* เก็บ **named-set แบบ portaw** (`install <set> --host` = ลงทีเดียว+wire+verify) เพราะ = ความสะดวกผู้ใช้ (North Star #2).
+> **Foundation policy:** portable base = AGENTS.md + MCP/CLI + host adapters. ECC = rich installed harness pack to detect/reuse, not the whole foundation. ก่อน wire ต้องผ่าน matrix ว่า portable + token-positive + quality-positive.
 
 ---
 
@@ -134,3 +135,31 @@ icm.exe recall "smoke" ; rtk gain
 - **nah-classify** — ✓ **RESOLVED: ไม่ loosen** (prefix-match + dual-use = security hole, A-12). dual-use ASK = by-design. ปิด friction → nah LLM-classifier opt-in (`nah key`), ห้าม prefix-allow.
 - **installer salvage** — portaw `install`/`verify` archived; ตัดสิน reuse-as-is vs port-thin (decision ค้าง).
 - portaw vet 06-05..15 (~2wk) → re-confirm tool version ตอน activate แต่ละ set.
+
+## 7. ⚠️ GRIPE — bundles ไม่ได้เชื่อมจริง (2026-06-26)
+
+> bench จริง รู้ผลจริง แต่ **integration หยุดแค่ bench** = promise ครึ่งใบ.
+
+| set | bench | integration | gripe |
+|---|---|---|---|
+| **efficiency-starter** | ✓ | ✅ **verified router push (2026-06-26)** — `paw.router_block` flip "paw apply" (install) → rung USE just-in-time เฉพาะเมื่อ linker state healthy (ledger + managed wiring + binary health) | task=callers/refactor → push `codegraph_callers`/`ast-grep --rewrite` ตอนนั้น. portable: bridge shared CC+Codex. 18 tests |
+| **secure-agent** | ✓ | nah hook อยู่แล้ว แต่ gitleaks/osv/infisical = standalone ไม่มี pipeline ต่อเนื่อง | ไม่มี CI gate ใช้จริง |
+| **data-query** | ✓ 99.96% | duckdb/jq CLI พร้อม แต่ paw install ไม่ trigger ใช้ context-time | มีไว้เฉยๆ ไม่ได้ routing ไปใช้ |
+| **doc-extract** | ✓ tested | markitdown CLI OK แต่ไม่มี integration กับ read-tool workflow | ไม่มี pipeline |
+| **repo-pack** | ✓ cross-OS | `paw pack [path]` command live — wraps `bin/code2prompt.exe`, token count บน stderr | ✅ wired: `paw pack docs/ --include "*.md"` → 66,710 tok (2026-06-26) |
+| **design-quality** | ✓ slop-catch | impeccable skill figtree CLI = ready แต่ไม่เคย active ใน prompt | dormant |
+| **context-quality** | ✓ idle-calc | context7 MCP OK แต่ compliance 8% = ไม่เคย route ถึง | nudge != enforce |
+| **web-research** | ◐ CC WebFetch พอ | fetch MCP ← library ไหนใช้ตอนไหน? nobody knows | ไร้ polic |
+| **browser-automation** | ◐ no install-test | browser-harness skill OK แต่ไม่เคยเปิด session | high-priv scare = freeze |
+| **test-affected** | ✓ head-to-head | testmon installed แต่ไม่เคยใช้ใน loop dev จริง | bench-only |
+| **headroom-ai** | ✓ bench script (Codex via virtual-env) | ◐ Codex=ผ่าน virtual bench / ❌ native(Claude)=compile-tax gate | **Codex ได้ Claude ไม่ได้** — host-dependent gap ไม่ใช่ absolute reject |
+| **ctx-mode** | ✓ +7.9k measured (Claude) / ✓ Codex ใช้บ่อยมาก | Codex = active daily / Claude = ❌ folded net-neg | **same tool, polar opposite adoption** — Claude compliance 8% ไม่คุ้ม tax, Codex กลับใช้หนัก |
+
+**สัจธรรม:** `paw sets` / `paw apply` ลง tool ครบ แต่ **ไม่มีการ wiring จริงที่เปลี่ยนพฤติกรรม session** — bench แสดงว่าได้ผล แต่ daily-use = silent. bundle harness = bench harness, **ไม่ใช่ production harness**.
+
+**fix progress (2026-06-26):**
+- `repo-pack` → ✅ `paw pack` command live (wraps code2prompt, token count จริง).
+- `efficiency-starter` → ✅ **wired behavioral routing** — bridge เดิม push "paw apply <set>" (install ของที่ลงแล้ว = noise). พลิกเป็น **verified-aware rung routing**: `healthy` จาก linker ledger/managed block/MCP/binary health เท่านั้น → push คำสั่งที่ใช้จริง (`codegraph_callers` / `ast-grep --rewrite`) ตรง sub-intent ของ prompt, just-in-time. `degraded/drifted` → `paw verify`; ยังไม่ link → `paw apply`. data-driven (`usage_routing` ใน sets.json) → set อื่นเติม rule ได้. portable: ผ่าน `paw.router_block` ที่ CC+Codex share อยู่แล้ว (ไม่ใช่ CC-lock).
+- **headroom → defer บน CC** (เช็คสด 2026-06-26): PyPI 0.27.0 ยังไม่มี Windows wheel (mac-arm64/linux เท่านั้น) = compile-tax; ซ้ำ headroom = API-proxy ไม่มีจุดเสียบใน CC interactive seat. บ้านจริง = Codex/metered path.
+
+**next:** `test-affected` → `paw test` (`pytest --testmon`). `data-query` → เติม `usage_routing` (route bulky query → duckdb). live-measure: นับ tool-call before/after บน task จริง ปิด "bench-only" ให้หมด.

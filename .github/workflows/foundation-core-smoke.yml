@@ -1,0 +1,56 @@
+name: foundation-core smoke
+
+# Prove default-init sets (efficiency-min, secure-agent, doc-data-min,
+# local-memory) install and run on every shipped OS target.  Closes the
+# macOS/Linux gap that cannot be tested on the Windows dev box.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/foundation-core-smoke.yml'
+      - '.github/scripts/foundation-smoke.sh'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  foundation:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x64
+          - os: macos-latest
+            label: macos-arm64
+          - os: macos-15-intel
+            label: macos-x64
+          - os: windows-latest
+            label: windows-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Install paw
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[cli]"
+
+      - name: Install & probe default-init tools
+        run: bash .github/scripts/foundation-smoke.sh
+        env:
+          GH_TOKEN: ${{ github.token }}

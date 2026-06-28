@@ -41,8 +41,19 @@ class CuratedSet:
     name: str
     description: str
     trigger_terms: tuple[str, ...]
+    catalog_status: str
+    default_init: bool
+    link_scope: str
+    foundation_tier: str
+    bench_status: str
+    platforms: dict
+    token_tax: dict
+    evidence: dict
+    privacy: dict
+    windows_ergonomics: dict
     mcp: tuple[dict, ...]      # MCP tool entries (config to patch)
     non_mcp: tuple[dict, ...]  # non-MCP tool entries (shim install steps)
+    usage_routing: tuple[dict, ...]  # sub-intent -> rung hints (when/needs/use)
     raw: dict
 
     @property
@@ -56,8 +67,19 @@ class CuratedSet:
             name=raw["set_name"],
             description=raw.get("description", ""),
             trigger_terms=tuple(raw.get("trigger_terms", [])),
+            catalog_status=raw.get("catalog_status", "ready"),
+            default_init=bool(raw.get("default_init", False)),
+            link_scope=raw.get("link_scope", "conditional"),
+            foundation_tier=raw.get("foundation_tier", "specific"),
+            bench_status=raw.get("bench_status", "unknown"),
+            platforms=dict(raw.get("platforms", {})),
+            token_tax=dict(raw.get("token_tax", {})),
+            evidence=dict(raw.get("evidence", {})),
+            privacy=dict(raw.get("privacy", {})),
+            windows_ergonomics=dict(raw.get("windows_ergonomics", {})),
             mcp=tuple(raw.get("mcp", [])),
             non_mcp=tuple(raw.get("non_mcp", [])),
+            usage_routing=tuple(raw.get("usage_routing", [])),
             raw=raw,
         )
 

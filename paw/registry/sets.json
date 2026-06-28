@@ -1,26 +1,28 @@
 {
-  "schema_version": "0.4.0",
-  "_comment": "Curated SETS = bundles vetted for portability, token reduction, and quality. catalog_status distinguishes install-ready sets from conditional, detect-first, candidate, and deferred surfaces.",
+  "schema_version": "0.5.0",
+  "_comment": "Curated SETS = bundles vetted for portability, token reduction, and quality. catalog_status distinguishes install-ready sets from conditional, detect-first, candidate, and deferred surfaces. default_init/link_scope/foundation_tier/bench_status drive paw routing and init posture.",
   "sets": [
     {
-      "set_name": "efficiency-starter",
-      "description": "Token-lean coding stack: semantic code navigation (cuts grep/read tool-calls) + shell-output compression. Two complementary layers, no hook collision.",
+      "set_name": "efficiency-min",
+      "bundle_name": "Foundation Core / Dev Efficiency",
+      "catalog_status": "ready",
+      "default_init": true,
+      "link_scope": "global",
+      "foundation_tier": "core",
+      "bench_status": "local-pass",
+      "description": "Token-lean dev baseline: lexical search, structural search/rewrite, and compact shell/build/test output. Global, cross-host, zero MCP.",
       "trigger_terms": [
-        "code navigation",
-        "find usages",
-        "where is",
-        "callers",
-        "callees",
-        "explore code",
-        "architecture",
         "grep",
+        "ripgrep",
         "search code",
+        "find text",
+        "find file",
+        "where is",
         "shell output",
         "build output",
         "test output",
-        "compress",
+        "compress output",
         "token",
-        "tool calls",
         "refactor",
         "rewrite",
         "codemod",
@@ -28,6 +30,532 @@
         "structural search",
         "find pattern",
         "rename across files"
+      ],
+      "decision": {
+        "portable": true,
+        "token": "Cuts exploration and command-output tokens through bounded CLI rungs; no MCP schema tax.",
+        "quality": "Improves precision before edits: rg for exact text, ast-grep for code shape, rtk for compact failure output.",
+        "verdict": "Default-init foundation for dev users; split from the old mixed efficiency-starter so project-linked MCP tools stay optional."
+      },
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "local-proxy"
+      },
+      "evidence": {
+        "local_bench": "docs/FOUNDATION-BENCH-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "rtk opt-out; rg and ast-grep none",
+        "network": "none after install"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok; prefer rg/ast-grep/rtk explicit commands for predictable output"
+      },
+      "mcp": [],
+      "non_mcp": [
+        {
+          "tool": "rg",
+          "display_name": "ripgrep",
+          "ref": "BurntSushi/ripgrep",
+          "license": "MIT OR Unlicense",
+          "version": "pin-at-install",
+          "kind": "cli",
+          "health_binary": "rg",
+          "purpose": "Fast lexical repo search. First rung for exact symbols, filenames, TODOs, and config keys; returns only matching lines instead of paging whole files into context.",
+          "install": [
+            {
+              "label": "install ripgrep",
+              "cmd": {
+                "windows": "winget install BurntSushi.ripgrep.MSVC",
+                "macos": "brew install ripgrep",
+                "linux": "brew install ripgrep"
+              },
+              "_alt_linux": "Use the distro package when preferred: apt/dnf/pacman install ripgrep.",
+              "runs_vendor_code": true
+            }
+          ],
+          "usage_hint": "rg -n 'symbol|pattern' src tests   |   rg --files -g '*.py'   |   rg -n --context 2 'error message'",
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "aider",
+            "opencode"
+          ]
+        },
+        {
+          "tool": "rtk",
+          "display_name": "RTK (Rust Token Killer)",
+          "ref": "github.com/rtk-ai/rtk",
+          "license": "MIT",
+          "version": "pin-at-install",
+          "kind": "hook-proxy",
+          "purpose": "PreToolUse hook rewrites Bash commands to rtk equivalents, compresses shell output (cargo/pytest/go test/git/grep/find/ls/tsc/eslint/docker/kubectl) before it enters context. 60-90% on common dev commands (vendor).",
+          "_build_test_coverage_note": "2026-06-12 audit (vs an 'extend rtk with output summarization' proposal): rtk ALREADY ships the build/test summarizer class — `rtk test` (failures-only), `rtk summary <cmd>` (generic heuristic), `rtk err <cmd>` (errors-only), `rtk pipe` (stdin filter), plus per-tool filters (pytest/cargo/tsc/jest/vitest/mypy/ruff/lint/next/dotnet/npm/playwright). Local proof: `rtk pytest` on a 297-test suite -> ONE line ('Pytest: 297 passed'). DO NOT propose building this. The REAL gap is ADOPTION: the hook does not rewrite interpreter-prefixed forms (`py -m pytest`, `python -m ...`) -> those runs enter context raw; call the rtk form explicitly. Mechanism note: a PostToolUse 'output interceptor' is impossible on Claude Code (output already entered context when the event fires) — PreToolUse command-rewrite is the only working model, i.e. rtk's existing one. Also `rtk discover` scanned 0 sessions on this Windows box (CC history path mismatch, upstream issue).",
+          "install": [
+            {
+              "label": "install rtk binary",
+              "cmd": {
+                "windows": "winget install rtk-ai.rtk",
+                "macos": "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh",
+                "linux": "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh"
+              },
+              "_alt": "macOS/Linux can also: brew install rtk (if tapped). Windows winget id = rtk-ai.rtk (auto-runnable).",
+              "runs_vendor_code": true
+            },
+            {
+              "label": "install hook + RTK.md into host",
+              "cmd": "rtk init -g --auto-patch",
+              "_alt_manual": "rtk init -g --no-patch  (prints hook for paw to apply)",
+              "runs_vendor_code": true
+            }
+          ],
+          "hook_entry": {
+            "_note": "VERIFIED 2026-06-05 from live host settings.json (rtk init writes this). paw can write it directly via its own patcher (rtk init -g --no-patch to skip rtk's own write).",
+            "event": "PreToolUse",
+            "matcher": "Bash",
+            "hook": {
+              "type": "command",
+              "command": "rtk hook claude"
+            },
+            "_per_host": "command arg = target agent: `rtk hook claude` (Claude Code) | `rtk hook gemini` (Gemini). Cursor/aider per rtk --agent."
+          },
+          "host_support": [
+            "claude-code",
+            "cursor",
+            "gemini",
+            "aider"
+          ],
+          "_install_note": "rtk is non-MCP (never in any MCP registry by definition) — exactly the gap paw fills. It self-installs its hook; paw orchestrates the step + records it for clean `portaw remove`. NO shell=True execution of community-supplied strings (RCE) — these install steps are curated/reviewed, pinned, and run as a fixed vendor script."
+        },
+        {
+          "tool": "ast-grep",
+          "display_name": "ast-grep (structural code search/rewrite)",
+          "ref": "ast-grep/ast-grep",
+          "license": "MIT",
+          "version": "0.43.0",
+          "kind": "cli",
+          "health_binary": "ast-grep",
+          "purpose": "AST-pattern search/lint/rewrite (Rust, tree-sitter, polyglot). Fills the STRUCTURAL rung between lexical grep (host-native ripgrep) and graph (codegraph/semble): matches code SHAPE (`foo($$$ARGS)`) not text — no comment/string/whitespace false-positive lines entering context; and a multi-file codemod (`--rewrite`) = ONE bounded command + unified diff instead of N Edit round-trips. 0 MCP tool-defs.",
+          "_axis_note": "axis = ↓token, two structural mechanisms (provenance: CALCULATED — paw deterministic A/B 2026-06-12, tiktoken cl100k on real tool output, bench/_astgrep_ab.py, on the paw repo itself = a CLEAN/low-noise codebase so these are conservative): (1) precision — `route(` text-grep 242 tok (9 hit-lines incl. the `def`, substrings, any comment/string mention) vs ast-grep `route($$$A)` call-shape 74 tok = +69.4% (structural match returns only true call sites, tighter form); (2) bulk codemod (rename across files) — ast-grep `--rewrite` preview diff 291 tok vs a grep->read->edit loop 1,217 tok (tight +/-3 windows, LOWER bound) to 10,961 tok (full affected files, UPPER bound) = +76.1% to +97.3%. Completes the lexical/structural/graph triad inside ONE set; each rung answers a different question class (text? shape? relationships?) — no overlap with codegraph (no call-graph here) or rtk (different surface, see compat). Noisier real-world codebases (heavy comments/strings/substring collisions) widen mechanism-1 well past 69%.",
+          "install": [
+            {
+              "label": "install ast-grep (npm)",
+              "cmd": "npm install --global @ast-grep/cli",
+              "_alt_pip": "py -m pip install ast-grep-cli (this box) / pip install ast-grep-cli",
+              "_alt_scoop": "scoop install main/ast-grep",
+              "_alt_brew": "brew install ast-grep",
+              "_alt_cargo": "cargo install ast-grep --locked",
+              "runs_vendor_code": true
+            }
+          ],
+          "usage_hint": "ast-grep run -p 'console.log($$$A)' src/   |   rewrite: ast-grep run -p '$F.unwrap()' --rewrite '$F.expect(\"msg\")' -U   |   rules: ast-grep scan (sgconfig.yml)",
+          "optional_skill": {
+            "ref": "ast-grep/agent-skill",
+            "install": "npx skills add ast-grep/agent-skill",
+            "_note": "Skill in the ast-grep GitHub org (726★) teaching the agent to WRITE ast-grep rules (plugin-marketplace wrapper, not a separate tool). Optional — the CLI alone is the set entry; skill = 0 idle (progressive disclosure)."
+          },
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "aider"
+          ],
+          "_verified": "2026-06-12 web: ast-grep/ast-grep 14.5k★ MIT v0.43.0 (2026-05-25); install commands quoted from README (npm/pip/scoop/brew/cargo; no winget found — absence from README page, not proof). agent-skill repo lives in the ast-grep org. INSTALL-TESTED 2026-06-12 on this Windows box: `npm install --global @ast-grep/cli` -> ast-grep 0.43.0 on PATH, `portaw verify efficiency-starter` gate PASS (codegraph+rtk+ast-grep ok). Deterministic A/B RAN (bench/_astgrep_ab.py): precision +69.4%, codemod +76-97% (numbers in _axis_note). WINDOWS NOTE: npm ships a `.CMD`/`.ps1` shim that subprocess(shell=False) cannot launch directly — resolve the real `%APPDATA%\\npm\\node_modules\\@ast-grep\\cli\\ast-grep.exe`. CAUTION: `--rewrite ... -U/--update-all` APPLIES in place (mutated repo files during the first A/B run; reverted); use `--rewrite` WITHOUT -U for a preview diff. rtk collision: NONE — rtk's PreToolUse rewrites only its known command list; `ast-grep` passes through, and its output is already bounded by the match (nothing for rtk to compress)."
+        }
+      ],
+      "usage_routing": [
+        {
+          "when": [
+            "grep",
+            "ripgrep",
+            "search code",
+            "find text",
+            "find file",
+            "exact symbol",
+            "where is"
+          ],
+          "needs": "rg",
+          "use": "rg -n 'PATTERN' [paths] ? exact lexical search before broad file reads"
+        },
+        {
+          "when": [
+            "refactor",
+            "rewrite",
+            "codemod",
+            "structural search",
+            "find pattern",
+            "rename across files",
+            "ast"
+          ],
+          "needs": "ast-grep",
+          "use": "ast-grep run -p 'PAT' [--rewrite 'NEW'] ? shape-match + multi-file codemod in 1 bounded cmd"
+        },
+        {
+          "when": [
+            "shell output",
+            "build output",
+            "test output",
+            "compress output",
+            "pytest",
+            "cargo test",
+            "tsc",
+            "eslint"
+          ],
+          "needs": "rtk",
+          "use": "rtk summary <cmd> / rtk pytest / rtk err <cmd> ? return compact failures instead of raw logs"
+        }
+      ],
+      "optional_sources": [
+        {
+          "tool": "headroom",
+          "kind": "api-proxy",
+          "catalog_status": "deferred",
+          "note": "Session/history compression can stack with rtk, but Windows packaging and external proxy tradeoffs keep it out of Foundation Core."
+        }
+      ]
+    },
+    {
+      "set_name": "code-intelligence",
+      "bundle_name": "Optional Foundation / Dev Code Intelligence",
+      "catalog_status": "conditional",
+      "default_init": false,
+      "link_scope": "project",
+      "foundation_tier": "optional-foundation",
+      "bench_status": "local-pass",
+      "description": "Project-linked semantic/graph code intelligence for callers, impact, architecture, and fuzzy code discovery. Optional because it needs per-repo indexing and MCP/tool state.",
+      "trigger_terms": [
+        "code navigation",
+        "find usages",
+        "where is",
+        "callers",
+        "callees",
+        "impact",
+        "explore code",
+        "architecture",
+        "trace",
+        "semantic code search",
+        "similar code",
+        "codebase memory",
+        "index repo",
+        "repo index",
+        "symbol graph"
+      ],
+      "decision": {
+        "portable": true,
+        "token": "Cuts grep/read loops on non-trivial repos, but only after per-project indexing; not a blind init set.",
+        "quality": "Improves agent context quality by answering relationship and discovery questions from an index rather than local text scans alone.",
+        "verdict": "Keep as optional/project-linked dev set. CodeGraph remains graph anchor; codebase-memory, Serena, grepai, and Repomix stay candidates until shootout matrix is finished."
+      },
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "conditional",
+        "runtime_output": "index-backed"
+      },
+      "evidence": {
+        "local_bench": "docs/FOUNDATION-BENCH-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "varies by candidate; prefer local/offline indexes first",
+        "network": "none for local anchors after install"
+      },
+      "windows_ergonomics": {
+        "powershell": "project index commands work; codebase-memory needs a paw argv wrapper for JSON-heavy calls"
+      },
+      "code_intel_anchor_by_host": {
+        "_decision": "2026-06-06 host-conditional anchor (idle-def calculated, runtime A/B pending).",
+        "claude-code": "codegraph (idle free on lazy-load host; richer: callers/callees/impact)",
+        "codex": "semble (509 vs codegraph 1615 idle tok = 68% leaner on load-all host; search-only)",
+        "gemini": "semble (same as codex)",
+        "_n1": "Only ONE code-intel MCP per host (codegraph XOR semble) + rtk (0 def) = 1 active MCP server/host, under N1 ceiling. No redundancy: the set never loads both on one host."
+      },
+      "mcp": [
+        {
+          "tool": "codegraph",
+          "display_name": "CodeGraph",
+          "ref": "@colbymchenry/codegraph",
+          "version": "latest",
+          "kind": "mcp-stdio",
+          "health_binary": "codegraph",
+          "purpose": "Pre-indexed local code knowledge graph. MCP tools codegraph_context (map a region) + codegraph_explore (symbol + relationships). Cuts token/tool-calls vs grep+read.",
+          "config_source": "codegraph install --print-config <id>",
+          "_config_source_note": "VERIFIED 2026-06-05 via `codegraph install --print-config <id>` (codegraph CLI v on PATH). Host id mapping: claude | codex | gemini | cursor (NOT 'claude-code'; full id set: claude,cursor,codex,opencode,hermes,gemini,antigravity,kiro). paw fetches the block then patches via its own patcher (uniform backup/rollback). DRIFT CORRECTED: earlier shape used `npx -y @colbymchenry/codegraph` — actual canonical command is the bare `codegraph` binary (installed on PATH) with `type:stdio`.",
+          "mcp_config": {
+            "type": "stdio",
+            "command": "codegraph",
+            "args": [
+              "serve",
+              "--mcp"
+            ],
+            "env": {}
+          },
+          "mcp_config_per_host": {
+            "_note": "VERIFIED --print-config output 2026-06-05. claude/codex/gemini identical (serve --mcp); cursor adds workspace path.",
+            "claude": {
+              "_target": "~/.claude.json mcpServers.codegraph",
+              "type": "stdio",
+              "command": "codegraph",
+              "args": [
+                "serve",
+                "--mcp"
+              ]
+            },
+            "codex": {
+              "_target": "~/.codex/config.toml [mcp_servers.codegraph]",
+              "command": "codegraph",
+              "args": [
+                "serve",
+                "--mcp"
+              ]
+            },
+            "gemini": {
+              "_target": "~/.gemini/settings.json mcpServers.codegraph",
+              "type": "stdio",
+              "command": "codegraph",
+              "args": [
+                "serve",
+                "--mcp"
+              ]
+            },
+            "cursor": {
+              "_target": "~/.cursor/mcp.json mcpServers.codegraph",
+              "type": "stdio",
+              "command": "codegraph",
+              "args": [
+                "serve",
+                "--mcp",
+                "--path",
+                "${workspaceFolder}"
+              ]
+            }
+          },
+          "setup_shim": {
+            "_why": "MCP config alone leaves codegraph DEAD — it needs a built index. This is the residue patcher cannot do (vendor code). Scope to chosen project only.",
+            "steps": [
+              {
+                "label": "init + build index",
+                "cmd": "codegraph init -i",
+                "cwd": "{project_root}",
+                "runs_vendor_code": true
+              }
+            ]
+          },
+          "self_installs": true,
+          "_self_installs_note": "codegraph ships its own cross-host installer that patches ALL hosts interactively. paw does NOT delegate to it (no host-scoping, no uniform rollback, interactive). paw self-patches the single chosen host via config_source/mcp_config, then runs the index shim.",
+          "host_anchor": "claude-code",
+          "_host_anchor_note": "CC lazy-loads MCP defs -> idle ~0, so codegraph's richer toolset (callers/callees/impact/explore, 8 tools = 1615 tok CALCULATED cl100k) is free here and wins. On load-all hosts (Codex/Gemini) those 1615 tok are ALWAYS-ON -> use semble instead (see semble entry)."
+        },
+        {
+          "tool": "semble",
+          "display_name": "Semble",
+          "ref": "MinishLab/semble",
+          "version": "latest",
+          "kind": "mcp-stdio",
+          "health_binary": "semble",
+          "host_anchor": [
+            "codex",
+            "gemini"
+          ],
+          "purpose": "Semantic code search MCP (2 tools: search + find_related). Answers 'where/how' from an index instead of grep+read. Leaner than codegraph on load-all hosts: 509 tok idle (CALCULATED cl100k, 2 tools+instructions) vs codegraph 1615 (8 tools) = 68% less always-on def cost.",
+          "_host_anchor_note": "Load-all hosts (Codex/Gemini) pay every tool-def at startup -> semble's 509 < codegraph's 1615 matters. TRADE: semble = search+similarity only; NO callers/callees/impact. If a workflow needs refactor-impact, codegraph wins despite the idle cost. Runtime token-saving (grep+read replacement) claimed ~98%; clean A/B delta NOT isolable on the ROP run (sessions contaminated). CAPABILITY GAP CONFIRMED 2026-06-09 (ROP 3-repo run): semble fully answers search-shaped Qs (entrypoint/config/architecture) but CANNOT answer 'all callers' (Q2 always PARTIAL) or 'signature-change impact' (Q3 NOT/PARTIAL) -- no structural callers/callees/impact tool, find_related returns semantic neighbors not references, and it missed small/unindexed files + cross-repo config. So semble is a SEARCH primitive, not a call-graph tool: fine as the load-all idle-lean anchor for discovery, but swap to codegraph the moment refactor/impact/caller-audit is in scope.",
+          "install": [
+            "uv tool install semble"
+          ],
+          "mcp_config": {
+            "type": "stdio",
+            "command": "uvx",
+            "args": [
+              "--from",
+              "semble[mcp]",
+              "semble"
+            ],
+            "env": {}
+          },
+          "mcp_config_per_host": {
+            "_note": "VERIFIED from MinishLab/semble docs/installation.md 2026-06-06. Needs uv/uvx on PATH.",
+            "codex": {
+              "_target": "~/.codex/config.toml [mcp_servers.semble]",
+              "command": "uvx",
+              "args": [
+                "--from",
+                "semble[mcp]",
+                "semble"
+              ]
+            },
+            "gemini": {
+              "_target": "~/.gemini/settings.json mcpServers.semble",
+              "command": "uvx",
+              "args": [
+                "--from",
+                "semble[mcp]",
+                "semble"
+              ]
+            },
+            "claude": {
+              "_target": "~/.claude.json mcpServers.semble (NOT default anchor on CC; codegraph preferred)",
+              "command": "uvx",
+              "args": [
+                "--from",
+                "semble[mcp]",
+                "semble"
+              ]
+            }
+          }
+        }
+      ],
+      "non_mcp": [],
+      "usage_routing": [
+        {
+          "when": [
+            "callers",
+            "callees",
+            "impact",
+            "find usages",
+            "trace",
+            "what calls"
+          ],
+          "needs": "codegraph",
+          "use": "codegraph_callers / codegraph_impact / codegraph_explore ? graph answers callers+impact in 1 call"
+        },
+        {
+          "when": [
+            "where is",
+            "architecture",
+            "explore code",
+            "semantic code search",
+            "similar code"
+          ],
+          "needs": "semble",
+          "use": "semble search / find_related ? lean semantic discovery on load-all hosts; not a callers/impact tool"
+        }
+      ],
+      "optional_sources": [
+        {
+          "tool": "gortex",
+          "kind": "cli + daemon",
+          "kind_axis": "graph-search rival to codegraph",
+          "license": "Apache-2.0",
+          "version": "v0.52.0",
+          "catalog_status": "deferred",
+          "adoption_mode": "cli-augment-only",
+          "note": "Deep-vetted 2026-06-25. Portable signed Go binary and Apache-2.0 current license; local Windows install and index succeeded. Head-to-head verdict remains AUGMENT-only: strong multi-repo semantic/symbol discovery, but not a drop-in replacement for CodeGraph's focused callers/impact workflow. Default init/install writes many repo and user artifacts and the daemon/index has material RAM/disk cost. Never run `gortex init` through paw. If explicitly chosen, use scoped `gortex track` plus CLI queries, or an MCP readonly/minimal tool preset. Do not load Gortex and CodeGraph as default anchors together.",
+          "axis": "down-token (graph), vendor-claimed"
+        },
+        {
+          "tool": "headroom",
+          "kind": "api-proxy",
+          "kind_axis": "session/history compression, STACKS with rtk",
+          "note": "Already vetted 2026-06-09 (see verified.headroom_challenge): complementary layer (+12% additive over rtk's 88% in a real dual-deploy), kept OPTIONAL because PyPI ships no Windows wheel (Rust/maturin build friction). Promoted here from the verified-notes so the rung is visible to the router.",
+          "axis": "down-token (additive rung), measured-by-third-party"
+        },
+        {
+          "tool": "codebase-memory-mcp",
+          "kind": "mcp-stdio",
+          "ref": "modelcontextprotocol/codebase-memory-mcp",
+          "catalog_status": "candidate",
+          "adoption_mode": "project-linked shootout",
+          "bench_status": "local-pass",
+          "note": "Local index/search smoke passed in the dev foundation bench. Promising for persistent code memory, but PowerShell JSON argv is fragile; paw should wrap commands before promotion."
+        },
+        {
+          "tool": "Serena",
+          "kind": "mcp/agent-toolkit",
+          "ref": "oraios/serena",
+          "catalog_status": "candidate",
+          "adoption_mode": "project-linked shootout",
+          "bench_status": "local-pass-with-friction",
+          "note": "Index smoke passed, but uvx startup/Python 3.14 warning and larger operational surface keep it out of immediate init. Compare on quality before adding."
+        },
+        {
+          "tool": "grepai",
+          "kind": "cli + local embeddings",
+          "catalog_status": "candidate",
+          "adoption_mode": "semantic-search rung only",
+          "bench_status": "deferred",
+          "note": "Candidate for fuzzy natural-language code search when exact rg/ast-grep terms are unknown. Does not replace CodeGraph callers/impact. Needs local embedding/model setup, so keep optional until benchmarked."
+        },
+        {
+          "tool": "graphify",
+          "kind": "graph/memory harness",
+          "catalog_status": "deferred",
+          "adoption_mode": "not-init",
+          "bench_status": "rejected-for-init",
+          "note": "Useful conceptually, but heavy init/context behavior overlaps with paw memory. Keep out until a targeted memory-init benchmark proves value over ICM/paw memory."
+        }
+      ]
+    },
+    {
+      "set_name": "efficiency-starter",
+      "description": "Legacy compatibility alias. Prefer efficiency-min for global CLI foundation and code-intelligence for project-linked graph/semantic code tools.",
+      "catalog_status": "conditional",
+      "default_init": false,
+      "link_scope": "project",
+      "foundation_tier": "optional-foundation",
+      "bench_status": "local-pass",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "conditional",
+        "runtime_output": "local-proxy"
+      },
+      "evidence": {
+        "local_bench": "docs/FOUNDATION-BENCH-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "opt-out",
+        "network": "none"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
+      "trigger_terms": [
+        "legacy efficiency-starter",
+        "efficiency-starter"
+      ],
+      "_usage_routing_note": "PUSH the RIGHT RUNG just-in-time only when the set is paw-linked and healthy (ledger + managed block/MCP + binary health), instead of re-suggesting `paw apply` for an installed set (the gripe: install != use). A binary merely existing on PATH is not enough. Surfaced by paw.router_block through the shared CC+Codex UserPromptSubmit hook. Each rule: when=sub-intent terms, needs=binary that must resolve, use=the concrete command. rtk omitted on purpose — it is a transparent PreToolUse hook, nothing to route.",
+      "usage_routing": [
+        {
+          "when": [
+            "callers",
+            "callees",
+            "impact",
+            "where is",
+            "find usages",
+            "explore code",
+            "architecture",
+            "trace",
+            "what calls"
+          ],
+          "needs": "codegraph",
+          "use": "codegraph_callers / codegraph_impact / codegraph_explore — graph answers callers+impact in 1 call (grep+read can't trace)"
+        },
+        {
+          "when": [
+            "refactor",
+            "rewrite",
+            "codemod",
+            "structural search",
+            "find pattern",
+            "rename across files",
+            "ast"
+          ],
+          "needs": "ast-grep",
+          "use": "ast-grep run -p 'PAT' [--rewrite 'NEW'] — shape-match + multi-file codemod in 1 bounded cmd vs N edits"
+        }
       ],
       "token_profile": {
         "method": "measured = ccusage A/B (portaw bench --ab/--how) on the set's canonical workload, or command-level rtk-gain instrumentation. calculated = tiktoken (cl100k_base proxy) on the verbatim live MCP tool-def JSON the host loads (host tokenizers vary ~10-15%). vendor-claimed = from vendor docs, unverified. estimated = reasoned, not measured. neutral = 0 MCP tool-defs by construction (CLI/hook), idle schema cost provably zero. delta_pct = signed % tokens saved (+ = saved); idle_def_tokens = always-on tool-def cost on load-all hosts (0 on Claude Code, which lazy-loads).",
@@ -325,11 +853,126 @@
         "codex": "semble (509 vs codegraph 1615 idle tok = 68% leaner on load-all host; search-only)",
         "gemini": "semble (same as codex)",
         "_n1": "Only ONE code-intel MCP per host (codegraph XOR semble) + rtk (0 def) = 1 active MCP server/host, under N1 ceiling. No redundancy: the set never loads both on one host."
-      }
+      },
+      "deprecated_by": [
+        "efficiency-min",
+        "code-intelligence"
+      ]
+    },
+    {
+      "set_name": "local-memory",
+      "description": "Local-first semantic memory and cross-agent recall through ICM. Keeps durable project decisions and high-signal lessons outside always-on prompt context, then recalls bounded slices when needed.",
+      "catalog_status": "ready",
+      "default_init": true,
+      "link_scope": "global",
+      "foundation_tier": "core",
+      "bench_status": "local-pass",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "local-proxy"
+      },
+      "evidence": {
+        "local_bench": "docs/FOUNDATION-BENCH-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "none",
+        "network": "none"
+      },
+      "windows_ergonomics": {
+        "powershell": "use icm.exe to avoid Invoke-Command alias"
+      },
+      "trigger_terms": [
+        "memory",
+        "recall",
+        "remember",
+        "decision",
+        "lesson",
+        "mistake",
+        "shared memory",
+        "cross agent memory",
+        "context memory",
+        "durable memory",
+        "icm",
+        "what did we decide"
+      ],
+      "usage_routing": [
+        {
+          "when": [
+            "what did we decide",
+            "recall",
+            "remember",
+            "memory",
+            "lesson",
+            "mistake"
+          ],
+          "needs": "icm",
+          "use": "icm.exe recall \"QUESTION\" --read-only ? bounded local memory recall (PowerShell: call icm.exe explicitly)"
+        }
+      ],
+      "non_mcp": [
+        {
+          "tool": "icm",
+          "display_name": "Infinite Context Memory",
+          "ref": "github.com/rtk-ai/icm",
+          "version": "pin-at-install",
+          "kind": "cli",
+          "health_binary": "icm",
+          "purpose": "Local semantic memory CLI for durable decisions, lessons, and cross-host recall without always-loaded MCP schema tax.",
+          "usage_hint": "icm.exe recall \"what did we decide about bundle init\" --read-only   |   icm.exe store -t decisions -c \"summary\" -i high -k \"bundle\"",
+          "install": [
+            {
+              "label": "install ICM",
+              "cmd": {
+                "windows": "Follow ICM installer or existing machine install; verify with icm.exe --version",
+                "macos": "Follow ICM installer; verify with icm --version",
+                "linux": "Follow ICM installer; verify with icm --version"
+              },
+              "runs_vendor_code": true
+            }
+          ],
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "aider"
+          ]
+        }
+      ],
+      "compat_notes": "PowerShell aliases `icm` to Invoke-Command, so usage text should call `icm.exe` on Windows. Keep recall bounded and never store secrets or raw transcripts by default."
     },
     {
       "set_name": "secure-agent",
       "description": "Permissions + supply-chain guardrails for autonomous coding agents. Covers the harness component codegraph/rtk leave empty: a deterministic action-guard, secret leak prevention, and dependency-vuln defense. Entirely CLI/hook — ZERO MCP tool-defs, so it adds no per-session schema overhead on any host.",
+      "catalog_status": "ready",
+      "default_init": true,
+      "link_scope": "global",
+      "foundation_tier": "core",
+      "bench_status": "local-pass",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "local-proxy"
+      },
+      "evidence": {
+        "local_bench": "docs/FOUNDATION-BENCH-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "none",
+        "network": "optional"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
       "_criterion_note": "DIFFERENT AXIS from efficiency-starter. paw's core gate is 'reduce tokens OR improve context quality'; this set's PRIMARY value is the harness Permissions component (prevent catastrophic actions, block secret commits, catch malicious deps) — the 5th harness component (Tools/Knowledge/Observation/Action/Permissions). Secondary token benefit: every tool emits STRUCTURED/BOUNDED findings (JSON file:line:rule) instead of raw dumps the agent must scroll. Curated here because Permissions is the gap no registry/host covers; not over-claimed as a token-saver.",
       "trigger_terms": [
         "security",
@@ -520,6 +1163,30 @@
     {
       "set_name": "context-quality",
       "description": "Anti-hallucination knowledge layer: live, version-correct library docs injected on demand. Stops the agent inventing APIs / using stale method signatures. Single lean MCP (2 tool-defs) — does NOT touch local code (complements codegraph: external docs vs in-repo graph).",
+      "catalog_status": "conditional",
+      "default_init": false,
+      "link_scope": "conditional",
+      "foundation_tier": "optional-foundation",
+      "bench_status": "research-backed",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "medium",
+        "runtime_output": "unknown"
+      },
+      "evidence": {
+        "source": "docs/BUNDLE-INIT-STRATEGY.md"
+      },
+      "privacy": {
+        "telemetry": "unknown",
+        "network": "required"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
       "_criterion_note": "Axis = IMPROVE CONTEXT QUALITY (the second half of paw's core gate). Context7 is widely cited as the highest-impact MCP for code-quality because hallucinated/outdated API usage is a top failure mode. Token angle: it FETCHES only the needed doc slice on demand (progressive disclosure) rather than the agent guessing then debugging — fewer wasted correction loops. 2 tool-defs = N1-safe.",
       "trigger_terms": [
         "library docs",
@@ -617,6 +1284,30 @@
     {
       "set_name": "design-quality",
       "description": "For anyone shipping UI who wants to kill 'AI slop' and keep design fidelity. Catches the visual tells of machine-made frontends (purple gradients, bounce easing, cramped padding, dark glows, skipped headings, tiny touch targets) BEFORE they ship, and pulls real design tokens from Figma into code. Saves tokens by replacing guess-restyle-reguess loops with one deterministic audit pass.",
+      "catalog_status": "ready",
+      "default_init": false,
+      "link_scope": "global",
+      "foundation_tier": "specific",
+      "bench_status": "pending",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "unknown"
+      },
+      "evidence": {
+        "source": "docs/RECIPE-BUNDLE-RESEARCH-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "unknown",
+        "network": "optional"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
       "_axis_note": "axis = ↑quality (NOT token-primary). 0 MCP tool-defs → N1-free, 0 idle on every host. Stacks freely with efficiency-starter/secure-agent.",
       "trigger_terms": [
         "design",
@@ -738,6 +1429,30 @@
     {
       "set_name": "web-research",
       "description": "Token-lean web research: fetch + EXTRACT clean content (markdown, not raw-HTML dumps) and composable search, so the agent does its own research cheaply. Curates research PRIMITIVES the agent composes (search -> fetch -> extract, sources auditable), NOT an opaque answer-product connector that hides sourcing.",
+      "catalog_status": "conditional",
+      "default_init": false,
+      "link_scope": "conditional",
+      "foundation_tier": "specific",
+      "bench_status": "pending",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "medium",
+        "runtime_output": "unknown"
+      },
+      "evidence": {
+        "source": "docs/RECIPE-BUNDLE-RESEARCH-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "unknown",
+        "network": "required"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
       "_axis_note": "axis = BOTH halves of paw's gate. (1) DOWN-token: TARGETED extract (css-selector/semantic rank) returns only the relevant slice instead of a whole page the agent must scroll. (2) UP-quality: agent composes + can audit every source (no black-box synthesis). THE LINE (principled, not inherited from a drop-list): paw curates research PRIMITIVES (search/fetch/extract you compose and verify) and REJECTS answer-product connectors (perplexity-class) that synthesize the answer with opaque sourcing — those replace the agent's reasoning and defeat the same anti-hallucination axis as context-quality. This is why exa (composable search primitive) is allowed-but-optional while perplexity stays out, even though both are paid SaaS APIs: the split is primitive-vs-answer-product, not paid-vs-free. REDUNDANCY FLAG (advisor 2026-06-07): the plain Fetch anchor is NOT a token win where the HOST already ships a digest-fetch — Claude Code's native WebFetch already does URL->markdown->small-model-digest, so on CC the set's real value is the ADDITIVE rungs (Scrapling targeted/stealth extract, firecrawl JS-render, exa semantic), not Fetch. Fetch earns its keyless-anchor slot mainly on hosts WITHOUT a native digest-fetch (load-all hosts), where its 259-tok idle buys a capability CC gets for free. The token lever is targeted-extract-vs-full-page, NOT clean-vs-raw (no host emits raw-HTML dumps).",
       "trigger_terms": [
         "research",
@@ -951,6 +1666,30 @@
     {
       "set_name": "browser-automation",
       "description": "Lean browser-DRIVING capability for agents that must actually use a real browser (fill forms, upload files, navigate JS/SPA flows, scrape pages JS-render breaks). A thin self-healing CDP harness driven as a skill — ZERO MCP tool-defs — instead of the heavy playwright-MCP (47 tools) that blows the N1 ceiling for the same capability.",
+      "catalog_status": "conditional",
+      "default_init": false,
+      "link_scope": "conditional",
+      "foundation_tier": "optional-foundation",
+      "bench_status": "pending",
+      "platforms": {
+        "windows": "partial",
+        "macos": "partial",
+        "linux": "partial"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "unknown"
+      },
+      "evidence": {
+        "source": "docs/OPTIONAL-FOUNDATION-GAP-FILL-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "unknown",
+        "network": "optional"
+      },
+      "windows_ergonomics": {
+        "powershell": "manual-setup"
+      },
       "_axis_note": "axis = CAPABILITY-CLASS, curated on the LEAN-vs-HEAVY lever (same frame as web-research's Fetch anchor). Honest: browser automation is NOT a runtime token-saver by construction; the on-thesis lever is IDLE-DEF — browser-harness adds browser control at 0 MCP tool-defs (skill + a single CDP websocket the agent scripts), vs playwright-MCP's 47 always-on tool-defs for the SAME job. So paw's value = you get the capability without paying 47-tool idle on load-all hosts. SECONDARY ↑quality: the harness is self-healing — it writes missing helpers + per-site domain-skills during execution and reuses them next run, cutting re-derivation loops. NOT over-claimed as a token-saver; curated because it fills the browser-capability gap LEANLY where the obvious alternative is N1-blowing.",
       "trigger_terms": [
         "browser",
@@ -1079,25 +1818,267 @@
       }
     },
     {
+      "set_name": "doc-data-min",
+      "bundle_name": "Foundation Core / Local File Intelligence",
+      "catalog_status": "ready",
+      "default_init": true,
+      "link_scope": "global",
+      "foundation_tier": "core",
+      "bench_status": "local-pass",
+      "description": "Local file intelligence for dev work: query structured data and convert binary docs to markdown without loading whole files into context. Global, offline, zero MCP.",
+      "trigger_terms": [
+        "aggregate",
+        "analyze data",
+        "columns",
+        "convert to markdown",
+        "csv",
+        "data file",
+        "dataset",
+        "docx",
+        "duckdb",
+        "excel file",
+        "extract text",
+        "jq",
+        "json file",
+        "large csv",
+        "large json",
+        "local file intelligence",
+        "log file",
+        "office document",
+        "parquet",
+        "pdf",
+        "powerpoint",
+        "pptx",
+        "presentation",
+        "read binary document",
+        "read document",
+        "rows",
+        "spreadsheet",
+        "sql query",
+        "sqlite",
+        "word document",
+        "xlsx"
+      ],
+      "decision": {
+        "portable": true,
+        "token": "Replaces whole-file reads of CSV/JSON/Office/PDF-like artifacts with bounded SQL/jq/markdown slices.",
+        "quality": "Keeps tables, headings, schemas, and selected rows explicit so agents reason over the right artifact slice.",
+        "verdict": "Default-init foundation; merged data-query and doc-extract to reduce bundle sprawl while keeping the underlying tools composable."
+      },
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "local-proxy"
+      },
+      "evidence": {
+        "local_bench": "docs/FOUNDATION-BENCH-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "none",
+        "network": "none after install"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok; prefer explicit output files for converted docs before slicing"
+      },
+      "mcp": [],
+      "non_mcp": [
+        {
+          "tool": "duckdb",
+          "display_name": "DuckDB CLI",
+          "ref": "duckdb/duckdb",
+          "license": "MIT",
+          "version": "v1.5.2",
+          "_version_note": "v1.5.2 = latest stable 2026-04-13; v1.4.x = LTS line (supported 1 year). Either is fine; pin at install.",
+          "kind": "cli",
+          "health_binary": "duckdb",
+          "purpose": "In-process SQL engine that queries CSV/Parquet/JSON/SQLite FILES directly (`FROM 'data.csv'`, `sqlite_scan(...)`, globs over partitioned parquet) — no import step, no server. The agent answers filter/aggregate/join questions in one bounded call instead of paging a whole data file through context.",
+          "install": [
+            {
+              "label": "install duckdb CLI",
+              "cmd": {
+                "windows": "winget install DuckDB.cli",
+                "macos": "brew install duckdb",
+                "linux": "brew install duckdb"
+              },
+              "_alt_sh": "curl https://install.duckdb.org | sh (universal, but shell-pipe = print-only)",
+              "runs_vendor_code": true
+            }
+          ],
+          "usage_hint": "duckdb -c \"SELECT col, count(*) FROM 'data.csv' GROUP BY 1 ORDER BY 2 DESC LIMIT 10\"   |   schema first: duckdb -c \"DESCRIBE SELECT * FROM 'data.csv'\"   |   duckdb -json -c \"FROM 'logs/*.parquet' LIMIT 5\"   |   duckdb -c \"FROM sqlite_scan('app.db','users') LIMIT 5\"",
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "aider"
+          ]
+        },
+        {
+          "tool": "jq",
+          "display_name": "jq (JSON slicer)",
+          "ref": "jqlang/jq",
+          "license": "MIT",
+          "version": "jq-1.8.1",
+          "kind": "cli",
+          "health_binary": "jq",
+          "purpose": "Command-line JSON processor: pull exactly the fields/paths needed from a large JSON file or API response instead of Read-ing the whole document. Composable with curl/gh pipelines the agent already runs.",
+          "install": [
+            {
+              "label": "install jq",
+              "cmd": {
+                "windows": "winget install jqlang.jq",
+                "macos": "brew install jq",
+                "linux": "brew install jq"
+              },
+              "_alt_brew": "Linux without Linuxbrew: sudo apt/dnf/pacman install jq (distro-dependent, needs root → run manually)",
+              "runs_vendor_code": true
+            }
+          ],
+          "usage_hint": "jq '.items[] | {id, name}' big.json   |   jq -r '.[].url' resp.json   |   shape first: jq 'keys' obj.json / jq 'length' arr.json",
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "aider"
+          ]
+        },
+        {
+          "tool": "markitdown",
+          "display_name": "MarkItDown (Microsoft)",
+          "ref": "microsoft/markitdown",
+          "license": "MIT",
+          "version": "v0.1.6",
+          "kind": "cli",
+          "health_binary": "markitdown",
+          "purpose": "Official Microsoft converter: docx/xlsx/pptx/pdf/html/images (15+ formats) → markdown that PRESERVES structure (headings, lists, tables, links) — built explicitly for LLM pipelines. One call makes a binary office file greppable/sliceable text.",
+          "install": [
+            {
+              "label": "install markitdown (pip, scoped extras — NOT [all])",
+              "cmd": "pip install \"markitdown[docx,xlsx,pptx,pdf]\"",
+              "_windows_note": "on this box: py -m pip install \"markitdown[docx,xlsx,pptx,pdf]\"",
+              "_all_trap": "AVOID `markitdown[all]` — it pins youtube-transcript-api~=1.0.0 (gone from PyPI) -> unsatisfiable -> pip SILENTLY backtracks markitdown to ancient 0.0.2 (microsoft/markitdown #1809/#1704). Scoped extras (the office/pdf converters this set needs) pin a current 0.1.x cleanly. Add the youtube/audio extras only if that capability is actually wanted.",
+              "runs_vendor_code": true
+            }
+          ],
+          "usage_hint": "markitdown report.docx -o report.md   |   markitdown sheet.xlsx   |   markitdown deck.pptx   |   then grep/slice the md instead of re-converting",
+          "host_support": [
+            "claude-code",
+            "codex",
+            "gemini",
+            "cursor",
+            "aider"
+          ]
+        }
+      ],
+      "usage_routing": [
+        {
+          "when": [
+            "csv",
+            "parquet",
+            "sqlite",
+            "sql query",
+            "dataset",
+            "aggregate",
+            "rows",
+            "columns",
+            "duckdb"
+          ],
+          "needs": "duckdb",
+          "use": "duckdb -c \"SELECT ... FROM 'file.csv/parquet/json' LIMIT ...\" ? ask data questions without reading whole files"
+        },
+        {
+          "when": [
+            "json file",
+            "large json",
+            "jq",
+            "api response"
+          ],
+          "needs": "jq",
+          "use": "jq 'PATH_OR_FILTER' file.json ? slice only the fields/shape needed"
+        },
+        {
+          "when": [
+            "docx",
+            "xlsx",
+            "pptx",
+            "word document",
+            "excel file",
+            "powerpoint",
+            "pdf",
+            "convert to markdown",
+            "read document"
+          ],
+          "needs": "markitdown",
+          "use": "markitdown input.docx -o input.md ? convert once, then rg/slice the markdown"
+        }
+      ],
+      "optional_sources": [
+        {
+          "tool": "yq",
+          "kind": "cli",
+          "ref": "mikefarah/yq",
+          "license": "MIT",
+          "note": "Same slicing lever for YAML/XML/TOML (jq syntax). Optional rung — add when the workload is config-file-heavy (k8s/CI manifests). winget install MikeFarah.yq / brew install yq.",
+          "usage_hint": "yq '.services | keys' docker-compose.yml"
+        },
+        {
+          "tool": "markitdown-mcp",
+          "kind": "mcp",
+          "ref": "microsoft/markitdown (packages/markitdown-mcp)",
+          "note": "OFFICIAL MCP form — exactly 1 tool `convert_to_markdown(uri)` (http/https/file/data URIs) = leanest-possible MCP shape (Fetch-class; est. ~250-300 tok idle, NOT tokenized yet). Default stays the CLI (0 idle); take this rung only where shell access is awkward. Local-trusted-agent use only per its README (binds localhost).",
+          "mcp_config": {
+            "command": "markitdown-mcp",
+            "args": [],
+            "env": {}
+          },
+          "needs_env": []
+        },
+        {
+          "tool": "pandoc",
+          "kind": "cli",
+          "ref": "jgm/pandoc",
+          "license": "GPL-2.0",
+          "note": "Universal document converter, BOTH directions (md → docx/pdf output too — markitdown is read-only md). Heavyweight install; add only when the workload needs to PRODUCE office/pdf deliverables, not just read them.",
+          "usage_hint": "pandoc notes.md -o report.docx"
+        }
+      ]
+    },
+    {
       "set_name": "data-query",
       "description": "Token-lean structured-data answers: query CSV/Parquet/JSON/SQLite with ONE SQL or jq line instead of Read-ing the whole file into context. Pure CLI (DuckDB + jq) — ZERO MCP tool-defs on every host. Token cut by construction: a 50k-row CSV Read costs the whole file; `duckdb -c \"SELECT …\"` returns only the answer slice.",
+      "catalog_status": "ready",
+      "default_init": false,
+      "link_scope": "global",
+      "foundation_tier": "optional-foundation",
+      "bench_status": "local-pass",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "local-proxy"
+      },
+      "evidence": {
+        "local_bench": "docs/FOUNDATION-BENCH-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "none",
+        "network": "none"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
       "_axis_note": "axis = ↓token by construction — the targeted-query-vs-whole-file lever, same frame as web-research's targeted extract but on LOCAL data files where the discovery cost objection does NOT apply: schema discovery is one cheap bounded call (`DESCRIBE SELECT * FROM 'f.csv'` / `jq 'keys'`), not a full-page fetch. Secondary ↑quality: aggregates/joins computed by the engine are EXACT — the agent stops eyeballing rows and hallucinating sums. 0 MCP defs → N1-free, stacks with every other set on any host.",
       "trigger_terms": [
-        "csv",
-        "parquet",
-        "sqlite",
-        "jq",
-        "sql query",
-        "dataset",
-        "data file",
-        "analyze data",
-        "aggregate",
-        "json file",
-        "spreadsheet",
-        "rows",
-        "columns",
-        "log file",
-        "duckdb"
+        "legacy data-query",
+        "data-query"
       ],
       "token_profile": {
         "method": "measured = ccusage A/B (portaw bench --ab/--how) on the set's canonical workload, or command-level rtk-gain instrumentation. calculated = tiktoken (cl100k_base proxy) on the verbatim live MCP tool-def JSON the host loads (host tokenizers vary ~10-15%). vendor-claimed = from vendor docs, unverified. estimated = reasoned, not measured. neutral = 0 MCP tool-defs by construction (CLI/hook/skill), idle schema cost provably zero. delta_pct = signed % tokens saved (+ = saved); idle_def_tokens = always-on tool-def cost on load-all hosts (0 on Claude Code, which lazy-loads).",
@@ -1217,26 +2198,45 @@
         "status": "verified — INSTALL-TESTED + runtime A/B done 2026-06-12 on this Windows box. `winget install DuckDB.cli` -> duckdb v1.5.3 (note: web said v1.5.2; v1.5.3 was current at install — newer, fine), `winget install jqlang.jq` -> jq-1.8.1. `portaw verify data-query` gate PASS (both health_binary which-probes ok). Runtime delta CALCULATED via bench/_dataquery_ab.py = +99.96% (whole-file Read 1.099M tok vs duckdb schema+3-queries 477 tok on a 2.02MB/50k-row CSV). WINDOWS NOTE: winget PATH change is not visible to an already-spawned shell — merge Machine+User PATH (or restart shell) before verify.",
         "config_block_confirmed": "n/a — no MCP config; install commands quoted from official docs (install.duckdb.org, jqlang download page)",
         "token_profile_benchmarked": "CC runtime delta CALCULATED 2026-06-12 (+99.96%, deterministic tiktoken, bench/_dataquery_ab.py). jq lane not separately benched (same bounded-slice mechanism).",
-        "hosts": ["claude-code"]
-      }
+        "hosts": [
+          "claude-code"
+        ]
+      },
+      "deprecated_by": [
+        "doc-data-min"
+      ]
     },
     {
       "set_name": "doc-extract",
       "description": "Read the unreadable: ONE CLI call (Microsoft MarkItDown) converts docx/xlsx/pptx — formats host Read tools cannot open at all — plus PDF/HTML/images to clean structure-preserving markdown. The agent then greps/slices the markdown section it needs instead of failing on a binary blob. 0 MCP tool-defs (CLI anchor).",
+      "catalog_status": "ready",
+      "default_init": false,
+      "link_scope": "global",
+      "foundation_tier": "optional-foundation",
+      "bench_status": "local-pass",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "local-proxy"
+      },
+      "evidence": {
+        "local_bench": "docs/FOUNDATION-BENCH-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "none",
+        "network": "none"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
       "_axis_note": "axis = ↑context-quality FIRST (binary office files are invisible to the agent without this — a capability gap, like browser-automation), ↓token second (markdown that preserves headings/tables lets the agent slice the relevant section; honest: unmeasured). HONEST CC NOTE: Claude Code's native Read already handles PDF and images — on CC the real gap is docx/xlsx/pptx ONLY; the PDF/image rungs matter on hosts WITHOUT native PDF read (Codex/Gemini CLI). delta_pct intentionally null — capability-class, do NOT fabricate a saving.",
       "trigger_terms": [
-        "docx",
-        "xlsx",
-        "pptx",
-        "word document",
-        "excel file",
-        "powerpoint",
-        "office document",
-        "convert to markdown",
-        "read document",
-        "extract text",
-        "presentation",
-        "pdf"
+        "legacy doc-extract",
+        "doc-extract"
       ],
       "token_profile": {
         "method": "measured = ccusage A/B (portaw bench --ab/--how) on the set's canonical workload, or command-level rtk-gain instrumentation. calculated = tiktoken (cl100k_base proxy) on the verbatim live MCP tool-def JSON the host loads (host tokenizers vary ~10-15%). vendor-claimed = from vendor docs, unverified. estimated = reasoned, not measured. neutral = 0 MCP tool-defs by construction (CLI/hook/skill), idle schema cost provably zero. delta_pct = signed % tokens saved (+ = saved); idle_def_tokens = always-on tool-def cost on load-all hosts (0 on Claude Code, which lazy-loads).",
@@ -1329,13 +2329,41 @@
         "status": "verified — INSTALL-TESTED + capability probe done 2026-06-12 on this Windows box. `py -m pip install \"markitdown[all]\"` -> `portaw verify doc-extract` gate PASS. Capability probe (bench/_docextract_probe.py): generated a docx (h1/h2 headings + 3-col table) and an xlsx (named sheet + 10 rows), converted both via markitdown -> markdown PRESERVED structure = `# Quarterly Report` + `## Summary`/`## Regional Breakdown`, table rendered as GFM `| Region | Revenue | Growth |`, xlsx sheet name + all columns + all 10 rows intact. VERDICT structure-preserving = True. ⚠️ VERSION FINDING (root cause CORRECTED 2026-06-12): pip installed markitdown **0.0.2**, NOT v0.1.6. Cause is NOT a Python-3.14 wheel gap (markitdown 0.1.6 is pure `py3-none-any.whl`, installs fine on 3.14 with --no-deps). REAL cause = the `[all]` extra pins `youtube-transcript-api~=1.0.0`, which is no longer on PyPI (only 0.6.x then 1.2.3+), so `markitdown[all]==0.1.x` is unsatisfiable and pip SILENTLY backtracks markitdown down to 0.0.2. Known upstream: microsoft/markitdown #1809 (closed COMPLETED), #1704, #103 — NOT re-filed (duplicate). WORKAROUND (verified): install only needed extras, not `[all]` — `py -m pip install \"markitdown[docx,xlsx,pptx,pdf]==0.1.6\"` resolves 0.1.6 correctly. 0.0.2 still converts docx/xlsx fine for this set's purpose. delta_pct stays null (capability-class). TODO: switch the install step to the scoped-extras form to pin 0.1.x.",
         "config_block_confirmed": "n/a for CLI anchor; markitdown-mcp config shape from official package README (command markitdown-mcp), not host-captured",
         "token_profile_benchmarked": false,
-        "hosts": ["claude-code"]
-      }
+        "hosts": [
+          "claude-code"
+        ]
+      },
+      "deprecated_by": [
+        "doc-data-min"
+      ]
     },
     {
       "set_name": "harness-foundation",
-      "catalog_status": "detect-first",
       "description": "Cross-harness workflow foundation. Detect and reuse an existing ECC installation before adding paw's narrower catalog, memory, measurement, and routing layers. Never stack ECC plugin and full/manual installs.",
+      "catalog_status": "detect-first",
+      "default_init": false,
+      "link_scope": "detect-first",
+      "foundation_tier": "detect",
+      "bench_status": "not-applicable",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "none"
+      },
+      "evidence": {
+        "source": "docs/ECC-INTEGRATION-LEDGER.md"
+      },
+      "privacy": {
+        "telemetry": "none",
+        "network": "none"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
       "trigger_terms": [
         "install ecc",
         "agent skills",
@@ -1426,7 +2454,7 @@
           ]
         }
       ],
-      "compat_notes": "ECC overlaps paw's generic harness surface heavily. Paw should query installed ECC state and consume its skills/adapters rather than copy them again. Paw remains the curated capability catalog, empirical token/quality ledger, ICM-backed mistake memory, and just-in-time router. Before any install, detect plugin/manual state and reject stacked installation methods.",
+      "compat_notes": "ECC overlaps paw's generic harness surface heavily and is the rich installed harness pack to detect/reuse (see docs/ECC-INTEGRATION-LEDGER.md). The portable base remains AGENTS.md + MCP/CLI + host adapters; wire decisions must follow docs/WIRE-DECISION-MATRIX.md. Paw should query installed ECC state and consume its skills/adapters rather than copy them again. Paw remains the curated capability catalog, empirical token/quality ledger, ICM-backed mistake memory/blackboard, link/verify/remove control plane, and thin just-in-time router. Before any install, detect plugin/manual state and reject stacked installation methods.",
       "verified": {
         "date": "2026-06-25",
         "status": "official v2.0.0 docs reviewed; local Claude Code 2.1.190 and Codex 0.141.0 both expose plugin management commands. Actual isolated install trial remains part of the linker CI phase.",
@@ -1438,8 +2466,31 @@
     },
     {
       "set_name": "context-workbench",
-      "catalog_status": "conditional",
       "description": "Large-output context workbench for logs, multi-file analysis, documentation indexing, and web capture. Raw bytes stay outside the model context and only derived or retrieved slices return.",
+      "catalog_status": "conditional",
+      "default_init": false,
+      "link_scope": "conditional",
+      "foundation_tier": "optional-foundation",
+      "bench_status": "measured-risk",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "high",
+        "runtime_output": "workload-dependent"
+      },
+      "evidence": {
+        "source": "docs/BENCH.md"
+      },
+      "privacy": {
+        "telemetry": "unknown",
+        "network": "optional"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
       "trigger_terms": [
         "large file",
         "huge log",
@@ -1545,8 +2596,31 @@
     },
     {
       "set_name": "repo-pack",
-      "catalog_status": "ready",
       "description": "Deterministically package a selected repository subtree, git diff, or file set into a token-counted prompt artifact instead of repeated exploration and manual copying.",
+      "catalog_status": "ready",
+      "default_init": false,
+      "link_scope": "global",
+      "foundation_tier": "optional-foundation",
+      "bench_status": "local-pass",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "scope-required"
+      },
+      "evidence": {
+        "local_bench": "docs/FOUNDATION-BENCH-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "unknown",
+        "network": "none"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
       "trigger_terms": [
         "pack repo",
         "repository context",
@@ -1645,8 +2719,31 @@
     },
     {
       "set_name": "test-affected",
-      "catalog_status": "conditional",
       "description": "Run the tests a change can actually affect, reducing feedback time and test-log context while preserving a conservative full-suite fallback.",
+      "catalog_status": "conditional",
+      "default_init": false,
+      "link_scope": "project",
+      "foundation_tier": "optional-foundation",
+      "bench_status": "pending",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "unknown"
+      },
+      "evidence": {
+        "source": "docs/BUNDLE-INIT-STRATEGY.md"
+      },
+      "privacy": {
+        "telemetry": "none",
+        "network": "none"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
       "trigger_terms": [
         "affected tests",
         "changed tests",
@@ -1745,8 +2842,31 @@
     },
     {
       "set_name": "quality-gate",
-      "catalog_status": "ready",
       "description": "Portable deterministic preflight gates that catch repository, CI, and documentation defects before an agent spends another reasoning or CI loop on them.",
+      "catalog_status": "ready",
+      "default_init": false,
+      "link_scope": "global",
+      "foundation_tier": "optional-foundation",
+      "bench_status": "pending",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "unknown"
+      },
+      "evidence": {
+        "source": "docs/BUNDLE-COVERAGE-GAPS-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "none",
+        "network": "optional"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
       "trigger_terms": [
         "pre commit",
         "quality gate",
@@ -1885,8 +3005,31 @@
     },
     {
       "set_name": "api-quality",
-      "catalog_status": "ready",
       "description": "Language-agnostic HTTP/API contract tests expressed as reviewable text, with compact test output and CI reports instead of ad-hoc curl sessions and large response dumps.",
+      "catalog_status": "ready",
+      "default_init": false,
+      "link_scope": "global",
+      "foundation_tier": "specific",
+      "bench_status": "pending",
+      "platforms": {
+        "windows": "supported",
+        "macos": "supported",
+        "linux": "supported"
+      },
+      "token_tax": {
+        "idle_mcp": "none",
+        "runtime_output": "unknown"
+      },
+      "evidence": {
+        "source": "docs/BUNDLE-COVERAGE-GAPS-2026-06-28.md"
+      },
+      "privacy": {
+        "telemetry": "none",
+        "network": "optional"
+      },
+      "windows_ergonomics": {
+        "powershell": "ok"
+      },
       "trigger_terms": [
         "api test",
         "http contract",

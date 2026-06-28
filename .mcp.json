@@ -1,13 +1,30 @@
 {
   "mcpServers": {
     "context-mode": {
-      "command": "C:/Program Files/nodejs/node.exe",
+      "command": "context-mode",
+      "args": []
+    },
+    "codegraph": {
+      "type": "stdio",
+      "command": "codegraph",
       "args": [
-        "C:/Users/VVeb1250/AppData/Roaming/npm/node_modules/context-mode/start.mjs"
+        "serve",
+        "--mcp"
+      ]
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
       ],
-      "env": {
-        "CONTEXT_MODE_PLATFORM": "claude-code"
-      }
+      "env": {}
     }
   }
 }

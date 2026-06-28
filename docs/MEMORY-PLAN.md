@@ -5,6 +5,37 @@
 > misses real lessons, stores noise, forgets to recall, blackboard goes stale.
 > That is a **behavioral/policy** problem, not a storage-backend problem.
 
+## Current complaint — parallel agents now have v0 support
+
+Owner complaint: memory still does not work well when several AI tools/vendors
+and several sessions are open at the same time. That complaint was correct; the
+first fix is now a small explicit coordination plane, not a full orchestrator.
+
+What exists today:
+- one local ICM store shared by hosts;
+- explicit `paw blackboard write/read` for run-scoped handoff;
+- heuristic capture/curate/recall plumbing for single-session continuity.
+- `paw memory register|heartbeat|members` for peer identity and stale detection;
+- `paw memory post|poll` for cursor-based shared/private lanes;
+- `paw memory promote` for private→shared promotion;
+- `paw memory lock-acquire|lock-release` for TTL write-intent locks.
+- `paw memory hook` + `paw memory install-hooks` for Claude/Codex hook-assisted
+  auto-register/heartbeat/poll, so agents do not need to remember the mesh
+  manually on every turn.
+
+What does **not** exist yet:
+- automatic live capture across several concurrent vendors/sessions;
+- push/subscription so one agent sees another agent's new memory without polling;
+- automatic merge of conflicting semantic wiki updates;
+- cross-machine transport;
+- automatic agent spawn/barrier orchestration.
+
+So the honest label is: **ICM-backed durable memory + local poll-based
+parallel-memory mesh v0 + thin hook shim.** It supports several local live
+sessions coordinating through one CLI, with Claude/Codex hooks preventing common
+"agent forgot to poll" failures, but it is not yet autonomous multi-agent
+teamwork.
+
 ## Verdict on backend — keep ICM
 
 ICM is the right **struct** (verified): `topic·scope·importance·weight·access_count·
@@ -23,6 +54,27 @@ memory) → its server model wins; or ICM rebuild proves low-quality; or we want
 its observability (session replay/OTel/viewer). The old ledger note
 ("bm25-only") is **stale** — it now ships local MiniLM + hybrid RRF.
 
+### Daemon posture
+
+Current focus stays **no-daemon / CLI-first** until the memory stack is usable
+enough to evaluate honestly. The concern is real: no-daemon can push work back
+onto the user and agent, increasing prompt/token cost through manual
+`recall`/`poll`/`store` reminders, and can lose memory unless hooks are made
+heavier.
+
+Decision for now:
+
+- do not add a mandatory daemon before the CLI/hook path is working end to end;
+- keep the durable contract portable through ICM CLI + committed docs + host
+  hooks where available;
+- revisit an **optional local sidecar** after the no-daemon baseline is usable.
+
+Future sidecar gate: it must reduce manual prompts, missed captures, hook
+complexity, or coordination lag in measured use, while staying local-only,
+CLI-compatible, no-MCP-required, and graceful when absent. In short: "no
+mandatory daemon" is the durable principle; optional daemon remains a later
+benchmark candidate.
+
 ## Memory-type model (CoALA) + consolidation pathway
 
 ```
@@ -37,6 +89,16 @@ buffer / blackboard               ICM (experiential)                    skills (
     AGENTS.md / GEMINI.md** (linker injects all three)
 - **Procedural** (runbook/recipe) = **skills** — already cross-host (router scans
   `.claude`+`.codex`+`.agents`). Recurring lessons *graduate* here (human-gated).
+
+### Memoir posture
+
+ICM's `memoir` layer is not in use yet (`icm memoir list` currently returns no
+memoirs). Keep it that way until curation is cleaner. Memoir is the permanent
+concept/graph layer, not a raw capture inbox: do not distill `pending` into a
+memoir. The first safe pilot is one `portable-harness` memoir distilled only
+from curated `decisions` and `lessons`, then searched/exported as a graph. This
+is a later visual/knowledge-graph experiment, not part of the current
+no-daemon baseline.
 
 ## Locked decisions
 
@@ -63,6 +125,9 @@ buffer / blackboard               ICM (experiential)                    skills (
 7. **CLI floor before hook** — `paw recall` / `paw reflect` work on any host
    (pull); push (UserPromptSubmit) + capture (Stop) hooks are enhancements on
    hook-capable hosts (CC, Codex). Other (API-call) hosts: deferred, CLI-only.
+8. **Memoir later, not now** — Memoirs are for curated stable concepts and graph
+   visualization after the ordinary pending→wiki flow is trustworthy. Do not
+   use Memoir as a pending drain or automatic transcript distiller.
 
 ## Wiki entry schema (ICM)
 
