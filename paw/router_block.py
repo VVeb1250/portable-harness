@@ -23,6 +23,7 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Literal
 
+from .surface_context import SurfaceContext, build_surface_context, infer_intents
 from .sets.loader import CuratedSet, load_all
 
 _WORD = re.compile(r"[^\W_]+", re.UNICODE)
@@ -31,6 +32,21 @@ _SET_FLOOR = 2.0       # min trigger score for a set to surface
 _MAX_SETS = 2
 _MAX_MEM = 2
 _MEM_IMPORTANCE = {"high", "critical"}
+_INTENT_BOOSTS: dict[str, dict[str, float]] = {
+    "repo_handoff": {"repo-pack": 5.0, "context-workbench": -2.0},
+    "bulk_context": {"context-workbench": 5.0, "doc-data-min": -1.0},
+    "affected_tests": {"test-affected": 5.0},
+    "code_impact": {"code-intelligence": 4.0, "efficiency-min": 1.0},
+    "code_search": {"efficiency-min": 4.0, "code-intelligence": -1.0},
+    "docs_lookup": {"context-quality": 5.0, "web-research": -1.0},
+    "api_contract": {"api-quality": 5.0},
+    "browser_action": {"browser-automation": 5.0, "doc-data-min": -2.0},
+    "ui_quality": {"design-quality": 5.0, "browser-automation": -1.0},
+    "data_query": {"doc-data-min": 5.0, "context-workbench": -1.0},
+    "doc_extract": {"doc-data-min": 5.0},
+    "security_gate": {"secure-agent": 5.0, "quality-gate": 2.0},
+    "web_research": {"web-research": 5.0, "context-quality": -1.0},
+}
 
 RecallRunner = Callable[[str], str]
 LinkState = Literal["absent", "healthy", "degraded", "drifted"]
@@ -44,24 +60,59 @@ def _tokens(text: str) -> set[str]:
     return set(_WORD.findall(_norm(text)))
 
 
+def _phrase_matches(trigger: str, prompt_norm: str, toks: set[str]) -> bool:
+    """Match triggers as words/phrases, never as substrings inside code words.
+
+    This prevents noisy hits such as ``SurfaceDecision`` matching the
+    ``decision`` memory trigger, ``build_plan`` matching ``ui``, or
+    ``dashboard`` matching ``data``.
+    """
+    tn = _norm(trigger).strip()
+    if not tn:
+        return False
+    words = _WORD.findall(tn)
+    if len(words) == 1:
+        return words[0] in toks
+    boundary = rf"(?<!\w){re.escape(tn)}(?!\w)"
+    return re.search(boundary, prompt_norm) is not None or all(w in toks for w in words)
+
+
 # --------------------------------------------------------------------------- #
 # curated-set matching (lexical, deterministic)
 # --------------------------------------------------------------------------- #
-def _score_set(s: CuratedSet, prompt_norm: str, toks: set[str]) -> float:
+def _score_set(
+    s: CuratedSet,
+    prompt_norm: str,
+    toks: set[str],
+    intents: frozenset[str] = frozenset(),
+) -> float:
     """Phrase hit = 2.0; all words of a phrase present (any order) = 1.0."""
     score = 0.0
     for trig in s.trigger_terms:
-        tn = _norm(trig)
-        if tn and tn in prompt_norm:
+        tn = _norm(trig).strip()
+        if not tn:
+            continue
+        boundary = rf"(?<!\w){re.escape(tn)}(?!\w)"
+        if re.search(boundary, prompt_norm):
             score += 2.0
-        elif tn and all(w in toks for w in tn.split()):
+        elif _phrase_matches(tn, prompt_norm, toks):
             score += 1.0
+    for intent in intents:
+        score += _INTENT_BOOSTS.get(intent, {}).get(s.name, 0.0)
     return score
 
 
-def match_sets(prompt: str, limit: int = _MAX_SETS) -> list[tuple[CuratedSet, float]]:
-    pn, toks = _norm(prompt), _tokens(prompt)
-    scored = ((s, _score_set(s, pn, toks)) for s in load_all())
+def match_sets(
+    prompt: str,
+    limit: int = _MAX_SETS,
+    *,
+    context: SurfaceContext | None = None,
+) -> list[tuple[CuratedSet, float]]:
+    ctx = context or build_surface_context(prompt)
+    routing_text = ctx.routing_text() or prompt
+    pn, toks = _norm(routing_text), _tokens(routing_text)
+    intents = infer_intents(ctx)
+    scored = ((s, _score_set(s, pn, toks, intents)) for s in load_all())
     hits = sorted((x for x in scored if x[1] >= _SET_FLOOR), key=lambda x: -x[1])
     return hits[:limit]
 
@@ -186,12 +237,19 @@ def set_link_state(s: CuratedSet, cwd: str | None = None) -> LinkState:
         return "absent"
 
 
-def _rung_routing(s: CuratedSet, prompt: str, cwd: str | None = None) -> list[str]:
+def _rung_routing(
+    s: CuratedSet,
+    prompt: str,
+    cwd: str | None = None,
+    context: SurfaceContext | None = None,
+) -> list[str]:
     """Matched concrete rung commands for a set already known healthy."""
     rules = s.usage_routing
     if not rules:
         return []
-    pn, toks = _norm(prompt), _tokens(prompt)
+    ctx = context or build_surface_context(prompt, cwd=cwd)
+    routing_text = ctx.routing_text() or prompt
+    pn, toks = _norm(routing_text), _tokens(routing_text)
     hits: list[str] = []
     for rule in rules:
         needs = str(rule.get("needs", "")).strip()
@@ -199,10 +257,7 @@ def _rung_routing(s: CuratedSet, prompt: str, cwd: str | None = None) -> list[st
         if not installed:
             continue
         when = rule.get("when", [])
-        matched = any(
-            (wn := _norm(w)) and (wn in pn or all(x in toks for x in wn.split()))
-            for w in when
-        )
+        matched = any(_phrase_matches(str(w), pn, toks) for w in when)
         if matched:
             use = str(rule.get("use", "")).strip()
             if use:
@@ -210,7 +265,13 @@ def _rung_routing(s: CuratedSet, prompt: str, cwd: str | None = None) -> list[st
     return hits
 
 
-def set_routing(s: CuratedSet, prompt: str, cwd: str | None = None) -> list[str] | None:
+def set_routing(
+    s: CuratedSet,
+    prompt: str,
+    cwd: str | None = None,
+    *,
+    context: SurfaceContext | None = None,
+) -> list[str] | None:
     """Return concrete rung hints only after the set is linked and healthy.
 
     ``None`` means "do not suggest use"; caller should offer apply/verify based
@@ -219,7 +280,7 @@ def set_routing(s: CuratedSet, prompt: str, cwd: str | None = None) -> list[str]
     """
     if set_link_state(s, cwd) != "healthy":
         return None
-    return _rung_routing(s, prompt, cwd)
+    return _rung_routing(s, prompt, cwd, context=context)
 
 
 def _set_next_action(s: CuratedSet) -> str:
@@ -290,6 +351,7 @@ def paw_block(
     session_id: str = "",
     *,
     recall_runner: RecallRunner | None = None,
+    context: SurfaceContext | None = None,
 ) -> str:
     """Additional-context block for the prompt, or '' when nothing is strong.
 
@@ -299,15 +361,16 @@ def paw_block(
         if not prompt or len(prompt.strip()) < _MIN_PROMPT:
             return ""
         parts: list[str] = []
+        ctx = context or build_surface_context(prompt, cwd=cwd)
 
-        sets = match_sets(prompt)
+        sets = match_sets(prompt, context=ctx)
         if sets:
             lines = ["🐾 paw sets:"]
             for s, _ in sets:
                 desc = (s.description or "").strip().splitlines()[0][:70]
-                state = set_link_state(s, cwd)
+                state = set_link_state(s, cwd or ctx.cwd)
                 if state == "healthy":
-                    routing = _rung_routing(s, prompt, cwd)
+                    routing = _rung_routing(s, prompt, cwd or ctx.cwd, context=ctx)
                     if routing:
                         # live + sub-intent matched -> push the concrete rung(s) to USE now
                         lines.append(f"• {s.name} (live) → use:")

@@ -49,6 +49,12 @@ from paw.semantic_router import default_semantic_scorer
 from paw.skill_graph import default_skill_graph_path, load_skill_graph
 from paw.skill_router import default_skill_roots, discover_skills, suggest_skill
 from paw.sets.loader import SetsError, get_set, load_all
+from paw.surface_audit import (
+    build_surface_decision,
+    default_audit_path,
+    summarize_surface_audit,
+    write_surface_audit,
+)
 from paw.team_adapters import (
     AdapterError,
     build_codex_deepseek_adapters,
@@ -56,6 +62,7 @@ from paw.team_adapters import (
 )
 from paw.team_kernel import EvaluationResult, RoleOutput, TeamKernel, TeamKernelContext
 from paw.verification import make_verification_evaluator
+from paw.zcode import setup_zcode
 
 
 def _sets_list() -> int:
@@ -136,6 +143,54 @@ def _route(args: argparse.Namespace) -> int:
                 for value in values:
                     print(f"  - {value}")
     return 0 if decision.status != "error" else 1
+
+
+def _surface(args: argparse.Namespace) -> int:
+    decision = build_surface_decision(
+        args.task,
+        cwd=args.cwd,
+        intent=args.intent,
+        phase=args.phase,
+        active_tool=args.active_tool,
+        last_command=args.last_command,
+        changed_files=tuple(args.changed_file or ()),
+        recent_files=tuple(args.recent_file or ()),
+    )
+    audit_path = None
+    if args.audit:
+        audit_path = write_surface_audit(
+            decision,
+            path=Path(args.audit_path) if args.audit_path else None,
+        )
+    if args.json:
+        payload = decision.to_dict()
+        if audit_path is not None:
+            payload["audit_path"] = str(audit_path)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif decision.block:
+        print(decision.block)
+        if audit_path is not None:
+            print(f"audit: {audit_path}")
+    return 0
+
+
+def _surface_audit(args: argparse.Namespace) -> int:
+    path = Path(args.path) if args.path else default_audit_path(Path(args.cwd))
+    summary = summarize_surface_audit(path)
+    if args.json:
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+    else:
+        print(f"surface audit: {summary['events']} event(s)")
+        print(f"path: {summary['path']}")
+        if summary["sets"]:
+            print("sets:")
+            for name, count in summary["sets"].items():
+                print(f"  - {name}: {count}")
+        if summary["actions"]:
+            print("actions:")
+            for action, count in summary["actions"].items():
+                print(f"  - {action}: {count}")
+    return 0
 
 
 def _suggest(args: argparse.Namespace) -> int:
@@ -598,7 +653,7 @@ def _curate(args: argparse.Namespace) -> int:
 
 
 def _doctor(args: argparse.Namespace, *, command: str) -> int:
-    hosts = tuple(args.host) if args.host else ("claude-code", "codex", "gemini")
+    hosts = tuple(args.host) if args.host else ("claude-code", "codex", "gemini", "z-code")
     report = run_doctor(root=Path(args.root) if args.root else Path.cwd(), hosts=hosts)
     if args.json:
         print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
@@ -645,6 +700,19 @@ def _codebase_memory(args: argparse.Namespace) -> int:
     elif result.combined:
         print(result.combined)
     return result.returncode
+
+
+def _z_code(args: argparse.Namespace) -> int:
+    result = setup_zcode(overwrite=args.overwrite)
+    if args.json:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(result.summary)
+        print(f"  skill: {result.skill_path}")
+        if result.app_path:
+            print(f"  app: {result.app_path}")
+        print(f"  path: {'ready' if result.path_ready else 'restart shell/host'}")
+    return 0 if result.status == "healthy" else 1
 
 
 def _print_tx(result, as_json: bool) -> int:
@@ -770,6 +838,30 @@ def main(argv: list[str] | None = None) -> int:
     )
     router.add_argument("--max-budget-usd", type=float)
     router.add_argument("--json", action="store_true")
+
+    surface = sub.add_parser(
+        "surface",
+        help="print hook-style paw router+memory context for hosts without hooks",
+    )
+    surface.add_argument("task")
+    surface.add_argument("--cwd", default=".", help="repository/workspace path")
+    surface.add_argument("--intent", help="host-provided task intent, e.g. repo_handoff or affected_tests")
+    surface.add_argument("--phase", help="agent phase, e.g. explore, edit, verify, handoff")
+    surface.add_argument("--active-tool", help="tool the agent is about to use")
+    surface.add_argument("--last-command", help="command the agent is about to run or just ran")
+    surface.add_argument("--changed-file", action="append", help="changed file path; repeatable")
+    surface.add_argument("--recent-file", action="append", help="recently read or target file path; repeatable")
+    surface.add_argument("--audit", action="store_true", help="append structured surface decision to .paw/surface-audit.jsonl")
+    surface.add_argument("--audit-path", help="override audit JSONL path")
+    surface.add_argument("--json", action="store_true")
+
+    surface_audit = sub.add_parser(
+        "surface-audit",
+        help="summarize structured paw surface decisions",
+    )
+    surface_audit.add_argument("--cwd", default=".", help="repository/workspace path")
+    surface_audit.add_argument("--path", help="audit JSONL path (default: <cwd>/.paw/surface-audit.jsonl)")
+    surface_audit.add_argument("--json", action="store_true")
 
     suggest = sub.add_parser(
         "suggest",
@@ -912,9 +1004,13 @@ def main(argv: list[str] | None = None) -> int:
 
     hook = memory_sub.add_parser(
         "hook",
-        help="hook-safe auto register/heartbeat/poll shim for Claude, Codex, Gemini",
+        help="hook-safe auto register/heartbeat/poll shim for Claude, Codex, Gemini, Z Code",
     )
-    hook.add_argument("--host", required=True, choices=("claude-code", "codex", "gemini"))
+    hook.add_argument(
+        "--host",
+        required=True,
+        choices=("claude-code", "codex", "gemini", "z-code"),
+    )
     hook.add_argument(
         "--event",
         required=True,
@@ -1066,7 +1162,7 @@ def main(argv: list[str] | None = None) -> int:
     doctor_p.add_argument(
         "--host",
         action="append",
-        choices=("claude-code", "codex", "gemini"),
+        choices=("claude-code", "codex", "gemini", "z-code"),
         help="host to inspect; may be repeated (default: all known paw hosts)",
     )
     doctor_p.add_argument("--root", help="project root to inspect (default: cwd)")
@@ -1079,7 +1175,7 @@ def main(argv: list[str] | None = None) -> int:
     init_p.add_argument(
         "--host",
         action="append",
-        choices=("claude-code", "codex", "gemini"),
+        choices=("claude-code", "codex", "gemini", "z-code"),
         help="host to inspect; may be repeated (default: all known paw hosts)",
     )
     init_p.add_argument("--root", help="project root to inspect (default: cwd)")
@@ -1109,6 +1205,15 @@ def main(argv: list[str] | None = None) -> int:
     cbm_search.add_argument("--timeout", type=int, default=45)
     cbm_search.add_argument("--json", action="store_true")
 
+    z_code = sub.add_parser(
+        "z-code",
+        help="setup/check Z Code as a paw bundle/router/memory host",
+    )
+    z_code_sub = z_code.add_subparsers(dest="z_code_action", required=True)
+    z_code_setup = z_code_sub.add_parser("setup", help="install the paw-bundle Z Code skill")
+    z_code_setup.add_argument("--overwrite", action="store_true")
+    z_code_setup.add_argument("--json", action="store_true")
+
     plan_p = sub.add_parser("plan", help="preview wiring a CLI set into a host (no mutation)")
     _add_linker_args(plan_p, with_scope=True)
     apply_p = sub.add_parser("apply", help="wire a CLI set into a host (drift-guarded, backed up)")
@@ -1127,6 +1232,8 @@ def main(argv: list[str] | None = None) -> int:
         return _doctor(args, command="init")
     if args.group == "codebase-memory":
         return _codebase_memory(args)
+    if args.group == "z-code":
+        return _z_code(args)
     if args.group == "sets":
         if args.action == "list":
             return _sets_list()
@@ -1134,6 +1241,10 @@ def main(argv: list[str] | None = None) -> int:
             return _sets_show(args.name)
     if args.group == "route":
         return _route(args)
+    if args.group == "surface":
+        return _surface(args)
+    if args.group == "surface-audit":
+        return _surface_audit(args)
     if args.group == "suggest":
         return _suggest(args)
     if args.group == "blackboard":

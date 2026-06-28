@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from paw.memory_hook import (
+    PENDING_COUNT_TTL_SECONDS,
     build_config,
     hook_stdout,
     install_memory_hooks,
@@ -42,8 +43,8 @@ class MemoryHookTests(unittest.TestCase):
                 hook_state_dir=hook_state_dir,
             )
 
-            first = run_memory_hook(config)
-            second = run_memory_hook(config)
+            first = run_memory_hook(config, count_runner=lambda: 0)
+            second = run_memory_hook(config, count_runner=lambda: 0)
 
             self.assertIn("Reviewer found", first.additional_context)
             self.assertIn("cursor:", first.additional_context)
@@ -59,7 +60,8 @@ class MemoryHookTests(unittest.TestCase):
                 run_id="r",
                 state_dir=Path(tempfile.mkdtemp()),
                 hook_state_dir=Path(tempfile.mkdtemp()),
-            )
+            ),
+            count_runner=lambda: 0,
         )
 
         out = hook_stdout(result, hook_event_name="SessionStart")
@@ -70,6 +72,98 @@ class MemoryHookTests(unittest.TestCase):
     def test_load_hook_payload_is_fail_silent(self) -> None:
         self.assertEqual(load_hook_payload("not-json"), {})
         self.assertEqual(load_hook_payload("[]"), {})
+
+    def test_pending_nudge_is_silent_below_warn_threshold(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = build_config(
+                {"cwd": str(Path.cwd()), "session_id": "s"},
+                host="codex",
+                event="session-start",
+                project="p",
+                run_id="r",
+                state_dir=Path(directory) / "mesh",
+                hook_state_dir=Path(directory) / "hooks",
+            )
+
+            result = run_memory_hook(config, count_runner=lambda: 29, now=lambda: 1000.0)
+
+        self.assertEqual(result.additional_context, "")
+
+    def test_pending_nudge_surfaces_above_warn_threshold(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = build_config(
+                {"cwd": str(Path.cwd()), "session_id": "s"},
+                host="codex",
+                event="session-start",
+                project="p",
+                run_id="r",
+                state_dir=Path(directory) / "mesh",
+                hook_state_dir=Path(directory) / "hooks",
+            )
+
+            result = run_memory_hook(config, count_runner=lambda: 30, now=lambda: 1000.0)
+
+        self.assertIn("30 pending", result.additional_context)
+        self.assertIn("paw curate --dry-run", result.additional_context)
+
+    def test_critical_pending_uses_preview_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            config = build_config(
+                {"cwd": str(Path.cwd()), "session_id": "s"},
+                host="codex",
+                event="stop",
+                project="p",
+                run_id="r",
+                state_dir=Path(directory) / "mesh",
+                hook_state_dir=Path(directory) / "hooks",
+            )
+
+            result = run_memory_hook(
+                config,
+                count_runner=lambda: 80,
+                preview_runner=lambda: "🧹 paw: 80 pending → would ADD 80",
+                now=lambda: 1000.0,
+            )
+
+        self.assertEqual(
+            result.additional_context,
+            "🧹 paw: 80 pending → would ADD 80",
+        )
+
+    def test_pending_count_is_cached_per_member_until_ttl_expires(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            calls = {"count": 0}
+
+            def count_runner() -> int:
+                calls["count"] += 1
+                return 30 + calls["count"]
+
+            config = build_config(
+                {"cwd": str(Path.cwd()), "session_id": "s"},
+                host="codex",
+                event="user-prompt",
+                project="p",
+                run_id="r",
+                state_dir=Path(directory) / "mesh",
+                hook_state_dir=Path(directory) / "hooks",
+            )
+
+            first = run_memory_hook(config, count_runner=count_runner, now=lambda: 1000.0)
+            second = run_memory_hook(
+                config,
+                count_runner=count_runner,
+                now=lambda: 1000.0 + PENDING_COUNT_TTL_SECONDS - 1,
+            )
+            third = run_memory_hook(
+                config,
+                count_runner=count_runner,
+                now=lambda: 1000.0 + PENDING_COUNT_TTL_SECONDS + 1,
+            )
+
+        self.assertEqual(calls["count"], 2)
+        self.assertIn("31 pending", first.additional_context)
+        self.assertIn("31 pending", second.additional_context)
+        self.assertIn("32 pending", third.additional_context)
 
 
 class MemoryHookInstallTests(unittest.TestCase):
@@ -115,6 +209,39 @@ class MemoryHookInstallTests(unittest.TestCase):
                     "hook",
                     "--host",
                     "claude-code",
+                    "--event",
+                    "user-prompt",
+                    "--project",
+                    "p",
+                    "--run-id",
+                    "r",
+                    "--state-dir",
+                    str(Path(directory) / "mesh"),
+                    "--hook-state-dir",
+                    str(Path(directory) / "hooks"),
+                    "--json",
+                ],
+                input=json.dumps({"cwd": str(Path.cwd()), "session_id": "s"}),
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            payload = json.loads(proc.stdout)
+            self.assertEqual(payload["status"], "success")
+
+    def test_cli_hook_json_mode_accepts_z_code_host(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "paw",
+                    "memory",
+                    "hook",
+                    "--host",
+                    "z-code",
                     "--event",
                     "user-prompt",
                     "--project",

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-HostId = Literal["claude-code", "codex", "gemini"]
+HostId = Literal["claude-code", "codex", "gemini", "z-code"]
 ConfigFormat = Literal["json", "toml"]
 
 
@@ -62,13 +62,16 @@ def host_config(host: HostId) -> HostConfig:
     if host == "codex":
         # Codex CLI: ~/.codex/config.toml  → [mcp_servers.<name>]
         return HostConfig(host, _home() / ".codex" / "config.toml", "toml", ("mcp_servers",))
+    if host == "z-code":
+        # Z Code can import agent/MCP config; keep paw's shared layer in ~/.agents.
+        return HostConfig(host, _home() / ".agents" / "mcp.json", "json", ("mcpServers",))
     raise ValueError(f"unknown host: {host}")
 
 
 def detect_hosts() -> list[HostId]:
     """Return hosts whose config file currently exists on this machine."""
     found: list[HostId] = []
-    for h in ("claude-code", "codex", "gemini"):
+    for h in ("claude-code", "codex", "gemini", "z-code"):
         if host_config(h).path.exists():  # type: ignore[arg-type]
             found.append(h)  # type: ignore[arg-type]
     return found

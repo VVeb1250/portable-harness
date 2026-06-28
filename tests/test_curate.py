@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 from paw.curate import (
     Decision,
@@ -11,6 +14,7 @@ from paw.curate import (
     _seen_of,
     curate,
     list_pending,
+    pending_count,
     reconcile,
 )
 
@@ -162,6 +166,73 @@ class CurateApplyTests(unittest.TestCase):
         self.assertIn("empty", res.render())
         self.assertEqual(res.render(surface=True), "")
 
+    def test_write_acquires_and_releases_curate_lock(self) -> None:
+        calls, (store, update, forget) = self._runners()
+        fake_mesh = mock.Mock()
+        fake_mesh.acquire_lock.return_value = SimpleNamespace(status="success", locks=())
+
+        with mock.patch("paw.curate.MemoryMesh", return_value=fake_mesh):
+            res = curate(
+                list_runner=lambda c: json.dumps([pending("brand new locked lesson")]),
+                recall_fn=lambda q: [],
+                store_runner=store,
+                update_runner=update,
+                forget_runner=forget,
+            )
+
+        self.assertEqual(res.applied, 1)
+        self.assertTrue(res.wrote)
+        fake_mesh.acquire_lock.assert_called_once()
+        fake_mesh.release_lock.assert_called_once()
+        self.assertEqual(len(calls["store"]), 1)
+        self.assertEqual(len(calls["forget"]), 1)
+
+    def test_write_is_blocked_when_another_host_holds_curate_lock(self) -> None:
+        calls, (store, update, forget) = self._runners()
+        fake_mesh = mock.Mock()
+        fake_mesh.acquire_lock.return_value = SimpleNamespace(
+            status="blocked",
+            locks=(SimpleNamespace(owner="claude-code-1"),),
+        )
+
+        with mock.patch("paw.curate.MemoryMesh", return_value=fake_mesh):
+            res = curate(
+                list_runner=lambda c: json.dumps([pending("brand new blocked lesson")]),
+                recall_fn=lambda q: [],
+                store_runner=store,
+                update_runner=update,
+                forget_runner=forget,
+            )
+
+        self.assertEqual(res.applied, 0)
+        self.assertFalse(res.wrote)
+        self.assertIn("claude-code-1", res.reason)
+        fake_mesh.acquire_lock.assert_called_once()
+        fake_mesh.release_lock.assert_not_called()
+        self.assertEqual(calls["store"], [])
+        self.assertEqual(calls["forget"], [])
+
+    def test_lock_can_be_opted_out_for_manual_single_host_curation(self) -> None:
+        calls, (store, update, forget) = self._runners()
+
+        with (
+            mock.patch.dict(os.environ, {"PAW_CURATE_LOCK": "0"}),
+            mock.patch("paw.curate.MemoryMesh") as mesh_cls,
+        ):
+            res = curate(
+                list_runner=lambda c: json.dumps([pending("brand new opt out lesson")]),
+                recall_fn=lambda q: [],
+                store_runner=store,
+                update_runner=update,
+                forget_runner=forget,
+            )
+
+        self.assertEqual(res.applied, 1)
+        self.assertTrue(res.wrote)
+        mesh_cls.assert_not_called()
+        self.assertEqual(len(calls["store"]), 1)
+        self.assertEqual(len(calls["forget"]), 1)
+
 
 class ListPendingTests(unittest.TestCase):
     def test_parses_runner_json(self) -> None:
@@ -170,6 +241,13 @@ class ListPendingTests(unittest.TestCase):
 
     def test_bad_json_is_silent(self) -> None:
         self.assertEqual(list_pending(runner=lambda c: "not json"), [])
+
+    def test_pending_count_uses_list_pending_and_fails_closed(self) -> None:
+        self.assertEqual(
+            pending_count(runner=lambda c: json.dumps([pending("a"), pending("b")])),
+            2,
+        )
+        self.assertEqual(pending_count(runner=lambda c: "not json"), 0)
 
 
 if __name__ == "__main__":

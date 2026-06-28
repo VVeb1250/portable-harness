@@ -44,6 +44,7 @@ HOST_CONTEXT = {
     "claude-code": "CLAUDE.md",
     "codex": "AGENTS.md",
     "gemini": "GEMINI.md",
+    "z-code": "AGENTS.md",
 }
 
 ABSENT = "absent"  # fingerprint sentinel for a non-existent target
@@ -153,6 +154,7 @@ HOST_MCP_FILE = {
     "claude-code": (".mcp.json",),
     "gemini": (".gemini", "settings.json"),
     "codex": (".codex", "config.toml"),
+    "z-code": (".agents", "mcp.json"),
 }
 
 # Top-level key holding the server map, per config format.
@@ -163,6 +165,7 @@ _HOST_REGISTRY_KEY = {
     "claude-code": "claude",
     "codex": "codex",
     "gemini": "gemini",
+    "z-code": "claude",
     "cursor": "cursor",
 }
 
@@ -684,7 +687,7 @@ def _load_ledger(root: Path) -> dict:
     p = ledger_path(root)
     if not p.exists():
         return {"schema": SCHEMA_LEDGER, "paw_version": PAW_VERSION, "sets": {}}
-    return json.loads(p.read_text(encoding="utf-8"))
+    return json.loads(p.read_text(encoding="utf-8-sig"))
 
 
 def _ledger_key(set_name: str, host: str) -> str:

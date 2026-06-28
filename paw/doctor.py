@@ -106,6 +106,8 @@ def _check_host_hooks(host: str) -> HookCheck:
         path = Path.home() / ".claude" / "settings.json"
     elif host == "codex":
         path = Path.home() / ".codex" / "hooks.json"
+    elif host == "z-code":
+        path = Path.home() / ".zcode" / "skills" / "paw-bundle" / "SKILL.md"
     else:
         path = Path.home() / f".{host}" / "hooks.json"
 
@@ -115,6 +117,22 @@ def _check_host_hooks(host: str) -> HookCheck:
             config_path=str(path),
             config_present=False,
             memory_hooks=(),
+        )
+
+    if host == "z-code":
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            text = ""
+        found = []
+        for cmd in ("paw surface", "paw memory hook", "paw memory post"):
+            if cmd in text:
+                found.append(cmd)
+        return HookCheck(
+            host=host,
+            config_path=str(path),
+            config_present=True,
+            memory_hooks=tuple(found),
         )
 
     try:
@@ -291,7 +309,7 @@ def default_init_sets() -> list[CuratedSet]:
 def run_doctor(
     *,
     root: Path | None = None,
-    hosts: tuple[str, ...] = ("claude-code", "codex", "gemini"),
+    hosts: tuple[str, ...] = ("claude-code", "codex", "gemini", "z-code"),
 ) -> DoctorReport:
     root = root or Path.cwd()
     set_checks = tuple(_check_set(item, root) for item in default_init_sets())
@@ -397,7 +415,7 @@ def _load_ledger(root: Path) -> dict:
     if not path.exists():
         return {"sets": {}}
     try:
-        return json.loads(path.read_text(encoding="utf-8") or "{}")
+        return json.loads(path.read_text(encoding="utf-8-sig") or "{}")
     except json.JSONDecodeError:
         return {"sets": {}}
 

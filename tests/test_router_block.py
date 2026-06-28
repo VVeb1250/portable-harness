@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 import paw.router_block as rb
+from paw.surface_context import build_surface_context, infer_intents
 from paw.router_block import match_sets, paw_block, set_routing
 from paw.linker import apply_plan, build_plan
 from paw.sets.loader import get_set
@@ -35,6 +36,40 @@ class SetMatchingTests(unittest.TestCase):
     def test_scores_are_above_floor(self) -> None:
         hits = match_sets("query a csv file with sql, structured data")
         self.assertTrue(all(score >= 2.0 for _, score in hits))
+
+    def test_word_boundaries_prevent_code_identifier_false_positives(self) -> None:
+        surface_names = {s.name for s, _ in match_sets("find where SurfaceDecision is defined")}
+        caller_names = {
+            s.name for s, _ in match_sets("find all callers of build_plan and impact")
+        }
+        browser_names = {
+            s.name
+            for s, _ in match_sets(
+                "open a browser, fill the login form, click submit, and verify the dashboard"
+            )
+        }
+
+        self.assertNotIn("local-memory", surface_names)
+        self.assertNotIn("design-quality", caller_names)
+        self.assertNotIn("doc-data-min", browser_names)
+
+    def test_context_intent_boosts_specific_optional_sets(self) -> None:
+        handoff = build_surface_context(
+            "package the current git diff and relevant repo context",
+            intent="repo handoff",
+            phase="handoff",
+        )
+        affected = build_surface_context(
+            "run only tests for this change",
+            changed_files=("paw/router_block.py",),
+        )
+
+        self.assertEqual(match_sets(handoff.task, context=handoff)[0][0].name, "repo-pack")
+        self.assertIn("affected_tests", infer_intents(affected))
+        self.assertIn(
+            "test-affected",
+            {s.name for s, _ in match_sets(affected.task, context=affected)},
+        )
 
 
 class PawBlockTests(unittest.TestCase):

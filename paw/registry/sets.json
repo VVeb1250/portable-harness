@@ -978,9 +978,13 @@
         "security",
         "permission",
         "secret",
+        "secrets",
         "credential",
         "api key",
+        "api keys",
         "leak",
+        "leaked",
+        "secret scan",
         "vulnerability",
         "dependency audit",
         "supply chain",
@@ -1137,6 +1141,42 @@
           ]
         }
       ],
+      "usage_routing": [
+        {
+          "when": [
+            "secret",
+            "secrets",
+            "credential",
+            "api key",
+            "api keys",
+            "leak",
+            "leaked",
+            "secret scan"
+          ],
+          "needs": "gitleaks",
+          "use": "gitleaks detect --report-format json --report-path - ? bounded secret findings before commit"
+        },
+        {
+          "when": [
+            "vulnerability",
+            "dependency audit",
+            "supply chain",
+            "cve"
+          ],
+          "needs": "osv-scanner",
+          "use": "osv-scanner scan source -r --format json . ? dependency vulnerability scan"
+        },
+        {
+          "when": [
+            "permission",
+            "rm -rf",
+            "sandbox",
+            "dangerous command"
+          ],
+          "needs": "nah",
+          "use": "nah guards dangerous shell actions in the host hook; verify before autonomous destructive work"
+        }
+      ],
       "compat_notes": "CURATION VALUE — four NON-overlapping guard layers, all CLI/hook (0 MCP def): (1) nah = action guard (PreToolUse, blocks dangerous shell), (2) gitleaks = secret EGRESS guard (don't commit keys), (3) osv-scanner = dependency INGRESS guard (don't install malware), (4) infisical = secret EXPOSURE guard (don't put raw keys in context). No collision: only nah touches PreToolUse; the three CLIs are invoked on demand and add no host hook. OPTIONAL hardening (not in core set, heavier): microsandbox (libkrun microVM, hardware isolation) for true sandboxed exec; ggshield if you need ACTIVE secret validation (500+ vendor APIs) beyond gitleaks detection. EXCLUSIVE: gitleaks ⊕ detect-secrets (pick one detector; gitleaks = speed, detect-secrets = baseline-accept-existing workflow). Full-set host = claude-code (nah is CC-only today); codex/gemini/aider get the 3 CLIs (gitleaks/osv/infisical) without the action-guard until nah expands.",
       "verified": {
         "date": "2026-06-08",
@@ -1192,11 +1232,12 @@
         "library docs",
         "api reference",
         "how to use",
-        "version",
-        "package",
+        "package docs",
+        "library package",
         "framework",
         "sdk",
         "latest api",
+        "current docs",
         "documentation",
         "import",
         "deprecated"
@@ -1255,6 +1296,21 @@
         }
       ],
       "non_mcp": [],
+      "usage_routing": [
+        {
+          "when": [
+            "library docs",
+            "api reference",
+            "latest api",
+            "current docs",
+            "documentation",
+            "deprecated",
+            "context7"
+          ],
+          "needs": "",
+          "use": "Context7: resolve the library id, then query the exact API/topic before coding"
+        }
+      ],
       "compat_notes": "CURATION VALUE — pairs cleanly with efficiency-starter: Context7 = EXTERNAL library knowledge (docs on the internet), codegraph = INTERNAL code knowledge (your repo's graph). No overlap, no host-surface collision (Context7 adds 2 MCP tools, no hook). Stacking note (N1): if a user installs efficiency-starter + context-quality together on a LOAD-ALL host (Codex/Gemini), total active MCP servers = 2 (codegraph + context7) = within the ≤2-3 ceiling; adding a 3rd MCP server later needs a ceiling check. NOT bundled with GitHub MCP (87 tools = blows budget) — if code-search is wanted, use a thin search_code-only wrapper (backlog build-op #4), not the full GitHub MCP.",
       "verified": {
         "date": "2026-06-08",
@@ -1407,6 +1463,31 @@
           "_verified": "README tortastudios/figtree-cli 2026-06-06: plain CLI (non-MCP), npm -g, FIGMA_TOKEN env, multi-format output."
         }
       ],
+      "usage_routing": [
+        {
+          "when": [
+            "ai slop",
+            "design audit",
+            "frontend",
+            "ui",
+            "spacing",
+            "padding",
+            "touch target",
+            "visual"
+          ],
+          "needs": "",
+          "use": "npx impeccable detect src/ ? deterministic UI slop/quality audit before restyling loops"
+        },
+        {
+          "when": [
+            "figma",
+            "design tokens",
+            "design fidelity"
+          ],
+          "needs": "figtree",
+          "use": "figtree export ... ? pull design tokens only when a Figma source/token exists"
+        }
+      ],
       "optional_sources": [
         {
           "tool": "open-design",
@@ -1548,6 +1629,29 @@
         }
       ],
       "non_mcp": [],
+      "usage_routing": [
+        {
+          "when": [
+            "web page",
+            "fetch url",
+            "extract content",
+            "extract relevant content",
+            "read article"
+          ],
+          "needs": "",
+          "use": "Fetch/read the URL as markdown first; use targeted extract only for known bulky or JS-heavy pages"
+        },
+        {
+          "when": [
+            "search web",
+            "web search",
+            "look up online",
+            "research"
+          ],
+          "needs": "",
+          "use": "Search -> fetch -> extract; keep source URLs and avoid opaque answer-product connectors"
+        }
+      ],
       "optional_sources": [
         {
           "tool": "scrapling",
@@ -1767,6 +1871,22 @@
             "BROWSER_USE_API_KEY": "OPTIONAL — only for Browser Use Cloud (stealth / sub-agents / headless deploy; free tier 3 concurrent). Inject via env/.env ${VAR}, NEVER plaintext (paw security rule). Core local-Chrome use needs NO key."
           },
           "_verified": "2026-06-08 — gh + README browser-use/browser-harness: MIT, Python, 14.5k★. Self-healing CDP harness, ~1k LOC/4 files, skill-based (SKILL.md/install.md), 0 MCP def. Local Chrome use keyless; Browser Use Cloud key optional. Install mechanism = agent-driven setup prompt (NOT a pip/npm one-liner) — recorded honestly; end-to-end install NOT tested."
+        }
+      ],
+      "usage_routing": [
+        {
+          "when": [
+            "browser",
+            "browser automation",
+            "open a browser",
+            "fill form",
+            "login flow",
+            "click",
+            "submit",
+            "web form"
+          ],
+          "needs": "",
+          "use": "Use browser-harness/CDP for real browser actions; keep web-research for read-only fetch/extract"
         }
       ],
       "optional_sources": [
@@ -2494,8 +2614,11 @@
       "trigger_terms": [
         "large file",
         "huge log",
+        "failure log",
         "many files",
         "bulk output",
+        "dumping into context",
+        "without dumping",
         "index docs",
         "search indexed content",
         "context overflow",
@@ -2585,6 +2708,31 @@
         }
       ],
       "non_mcp": [],
+      "usage_routing": [
+        {
+          "when": [
+            "large file",
+            "huge log",
+            "failure log",
+            "bulk output",
+            "dumping into context",
+            "without dumping"
+          ],
+          "needs": "context-mode",
+          "use": "ctx_execute/ctx_execute_file for bulky output; return only filtered failures or summaries"
+        },
+        {
+          "when": [
+            "index docs",
+            "search indexed content",
+            "many files",
+            "context overflow",
+            "compaction"
+          ],
+          "needs": "context-mode",
+          "use": "ctx_fetch_and_index or ctx_execute_file, then ctx_search with keyword-rich queries"
+        }
+      ],
       "compat_notes": "Complements RTK: RTK compresses known shell outputs inline; context-mode is the avoid-the-dump and searchable-evidence lane for arbitrary bulky data. Overlaps ICM only in storage shape: ICM remains semantic durable memory, while context-mode stores session evidence and lexical FTS5 chunks. License permits local use and modification but forbids offering a competing hosted/managed service.",
       "verified": {
         "date": "2026-06-25",
@@ -2623,6 +2771,12 @@
       },
       "trigger_terms": [
         "pack repo",
+        "package repo",
+        "package git diff",
+        "agent handoff",
+        "handoff context",
+        "current git diff",
+        "repo context",
         "repository context",
         "share codebase",
         "prompt file",
@@ -2697,6 +2851,31 @@
           ]
         }
       ],
+      "usage_routing": [
+        {
+          "when": [
+            "package git diff",
+            "current git diff",
+            "git diff context",
+            "agent handoff",
+            "handoff context"
+          ],
+          "needs": "code2prompt",
+          "use": "python -m paw pack . --diff --output handoff.md ? scoped diff handoff; avoid whole-repo packs"
+        },
+        {
+          "when": [
+            "pack repo",
+            "package repo",
+            "repo context",
+            "repository context",
+            "subtree context",
+            "token budget"
+          ],
+          "needs": "code2prompt",
+          "use": "python -m paw pack <subtree> --output context.md ? choose a narrow subtree/includes first"
+        }
+      ],
       "optional_sources": [
         {
           "tool": "repomix",
@@ -2746,7 +2925,11 @@
       },
       "trigger_terms": [
         "affected tests",
+        "tests affected",
+        "only tests",
         "changed tests",
+        "python change",
+        "related tests",
         "test selection",
         "slow test suite",
         "run related tests",
@@ -2814,6 +2997,21 @@
             "https://github.com/tarpas/pytest-testmon",
             "https://www.testmon.org/"
           ]
+        }
+      ],
+      "usage_routing": [
+        {
+          "when": [
+            "affected tests",
+            "tests affected",
+            "only tests",
+            "python change",
+            "related tests",
+            "run related tests",
+            "test selection"
+          ],
+          "needs": "",
+          "use": "python -m pytest --testmon ? affected Python tests; fall back to full pytest on cache/config uncertainty"
         }
       ],
       "optional_sources": [
@@ -2996,6 +3194,35 @@
           ]
         }
       ],
+      "usage_routing": [
+        {
+          "when": [
+            "github actions",
+            "workflow yaml"
+          ],
+          "needs": "actionlint",
+          "use": "actionlint .github/workflows/*.yml ? compact GitHub Actions diagnostics"
+        },
+        {
+          "when": [
+            "broken links",
+            "readme",
+            "documentation"
+          ],
+          "needs": "lychee",
+          "use": "lychee docs README.md ? bounded link-check output"
+        },
+        {
+          "when": [
+            "pre commit",
+            "before commit",
+            "lint staged",
+            "quality gate"
+          ],
+          "needs": "prek",
+          "use": "prek run --all-files ? deterministic local preflight before CI"
+        }
+      ],
       "compat_notes": "These tools compose rather than overlap: prek schedules repository hooks, actionlint validates Actions workflows, and lychee validates links. Keep language-specific linters in project dependencies instead of making paw install one universal linter.",
       "verified": {
         "date": "2026-06-25",
@@ -3032,8 +3259,11 @@
       },
       "trigger_terms": [
         "api test",
+        "api contract",
         "http contract",
+        "http api contract",
         "rest test",
+        "rest endpoint",
         "graphql test",
         "integration test",
         "endpoint validation",
@@ -3102,6 +3332,22 @@
             "https://github.com/Orange-OpenSource/hurl",
             "https://hurl.dev/docs/running-tests.html"
           ]
+        }
+      ],
+      "usage_routing": [
+        {
+          "when": [
+            "api test",
+            "http contract",
+            "http api contract",
+            "api contract",
+            "rest test",
+            "rest endpoint",
+            "graphql test",
+            "endpoint validation"
+          ],
+          "needs": "hurl",
+          "use": "hurl --test tests/api/*.hurl ? compact HTTP contract checks; keep long error output opt-in"
         }
       ],
       "compat_notes": "Complements browser-automation: Hurl verifies HTTP contracts without a browser; browser-harness remains for JS-rendered interaction and visual/user flows. Complements secure-agent by keeping credentials in variables/environment instead of committed test files.",

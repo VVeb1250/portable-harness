@@ -68,16 +68,6 @@ sidecar, Memoir graph, และ `skills.sh` bundle เป็น later experimen
 <!-- paw:ctx-routing-test end -->
 
 
-<!-- paw:efficiency-starter:start -->
-## paw capability · efficiency-starter
-Legacy compatibility alias. Prefer efficiency-min for global CLI foundation and code-intelligence for project-linked graph/semantic code tools.
-
-- **rtk** (`rtk`): PreToolUse hook rewrites Bash commands to rtk equivalents, compresses shell output (cargo/pytest/go test/git/grep/find/ls/tsc/eslint/docker/kubectl) before it enters context. 60-90% on common dev commands (vendor).
-  - install: `winget install rtk-ai.rtk`
-- **ast-grep** (`ast-grep`): AST-pattern search/lint/rewrite (Rust, tree-sitter, polyglot). Fills the STRUCTURAL rung between lexical grep (host-native ripgrep) and graph (codegraph/semble): matches code SHAPE (`foo($$$ARGS)`) not text — no comment/string/whitespace false-positive lines entering context; and a multi-file codemod (`--rewrite`) = ONE bounded command + unified diff instead of N Edit round-trips. 0 MCP tool-defs.
-  - usage: `ast-grep run -p 'console.log($$$A)' src/   |   rewrite: ast-grep run -p '$F.unwrap()' --rewrite '$F.expect("msg")' -U   |   rules: ast-grep scan (sgconfig.yml)`
-  - install: `npm install --global @ast-grep/cli`
-<!-- paw:efficiency-starter:end -->
 
 <!-- paw:secure-agent:start -->
 ## paw capability · secure-agent
@@ -98,63 +88,21 @@ Permissions + supply-chain guardrails for autonomous coding agents. Covers the h
 
 
 
-<!-- paw:repo-pack:start -->
-## paw capability · repo-pack
-Deterministically package a selected repository subtree, git diff, or file set into a token-counted prompt artifact instead of repeated exploration and manual copying.
 
-- **code2prompt** (`code2prompt`): Fast Rust repo packer with git-aware filtering, source tree, templates, token counting, and diff/log context. Produces stdout or a file for any agent host.
-  - usage: `code2prompt src -O -   |   code2prompt . -d -O diff-context.md   |   always scope/includes before packing a large repo`
-  - install: `cargo install code2prompt`
-<!-- paw:repo-pack:end -->
 
-<!-- paw:design-quality:start -->
-## paw capability · design-quality
-For anyone shipping UI who wants to kill 'AI slop' and keep design fidelity. Catches the visual tells of machine-made frontends (purple gradients, bounce easing, cramped padding, dark glows, skipped headings, tiny touch targets) BEFORE they ship, and pulls real design tokens from Figma into code. Saves tokens by replacing guess-restyle-reguess loops with one deterministic audit pass.
 
-- **impeccable** (`impeccable`): Anti-AI-slop design audit. 27 deterministic anti-pattern rules + 12-rule LLM critique pass. Slash: /impeccable audit|polish|critique. CLI: npx impeccable detect src/. No API key for the deterministic rules.
-  - install: `npx impeccable skills install`
-- **figtree-cli** (`figtree`): Extract design tokens from Figma → CSS/SCSS/Tailwind/SwiftUI/Android/JSON. No Figma plugin / Dev Mode needed. Keeps implemented UI faithful to the design source (fidelity = quality axis).
-  - install: `npm install -g figtree-cli`
-<!-- paw:design-quality:end -->
 
-<!-- paw:browser-automation:start -->
-## paw capability · browser-automation
-Lean browser-DRIVING capability for agents that must actually use a real browser (fill forms, upload files, navigate JS/SPA flows, scrape pages JS-render breaks). A thin self-healing CDP harness driven as a skill — ZERO MCP tool-defs — instead of the heavy playwright-MCP (47 tools) that blows the N1 ceiling for the same capability.
 
-- **browser-harness** (`browser-harness`): Thin, editable CDP harness: connects the LLM directly to a real Chrome over ONE websocket (nothing between). The agent drives the browser by writing/running Python in agent-workspace, and the harness self-heals — it writes missing helpers + per-site domain-skills during execution and reuses them next run. ~1k lines across 4 core files. 0 MCP tool-defs (skill, not a server).
-  - install: `Set up https://github.com/browser-use/browser-harness for me. Read `install.md` and follow the steps to install browser-harness and connect it to my browser.`
-<!-- paw:browser-automation:end -->
 
-<!-- paw:test-affected:start -->
-## paw capability · test-affected
-Run the tests a change can actually affect, reducing feedback time and test-log context while preserving a conservative full-suite fallback.
 
-- **pytest-testmon** (`pytest-testmon`): Coverage-based dependency map selects tests affected by changed Python code and updates its local .testmondata cache after each run.
-  - usage: `First run: python -m pytest --testmon   |   later runs select affected tests   |   use --testmon-noselect when safety requires full execution`
-  - install: `python -m pip install pytest-testmon`
-<!-- paw:test-affected:end -->
+<!-- paw:optional-surface:start -->
+## paw optional capabilities
+Optional/specific bundle capabilities are intentionally not kept in always-on context. Before using repo-pack, code-intelligence, context-quality, browser automation, quality gates, API tests, or design tools, run:
 
-<!-- paw:quality-gate:start -->
-## paw capability · quality-gate
-Portable deterministic preflight gates that catch repository, CI, and documentation defects before an agent spends another reasoning or CI loop on them.
-
-- **prek** (`prek`): Fast Rust, single-binary, pre-commit-compatible hook manager with monorepo support and shared toolchain environments.
-  - install: `uv tool install prek`
-- **actionlint** (`actionlint`): Static checker for GitHub Actions syntax, expressions, action inputs, reusable workflows, script injection, credentials, runner labels, cron, and dependency errors.
-  - install: `go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12`
-- **lychee** (`lychee`): Fast link checker for Markdown, HTML, websites, and text with structured output, retries, throttling, fragment checks, and a maintained GitHub Action.
-  - install: `winget install --id lycheeverse.lychee`
-<!-- paw:quality-gate:end -->
-
-<!-- paw:api-quality:start -->
-## paw capability · api-quality
-Language-agnostic HTTP/API contract tests expressed as reviewable text, with compact test output and CI reports instead of ad-hoc curl sessions and large response dumps.
-
-- **hurl** (`hurl`): Plain-text HTTP client and test runner for REST, GraphQL, SOAP, HTML, and XML with captures, assertions, parallel test mode, and JSON/JUnit/TAP/HTML reports.
-  - usage: `hurl --test tests/api/*.hurl   |   use --error-format long only when compact failure output is insufficient`
-  - install: `winget install Orange-OpenSource.Hurl`
-<!-- paw:api-quality:end -->
-
+```powershell
+python -m paw surface "<task>" --cwd . --audit
+```
+<!-- paw:optional-surface:end -->
 <!-- paw:efficiency-min:start -->
 ## paw capability · efficiency-min
 Token-lean dev baseline: lexical search, structural search/rewrite, and compact shell/build/test output. Global, cross-host, zero MCP.
@@ -183,3 +131,12 @@ Local file intelligence for dev work: query structured data and convert binary d
   - usage: `markitdown report.docx -o report.md   |   markitdown sheet.xlsx   |   markitdown deck.pptx   |   then grep/slice the md instead of re-converting`
   - install: `pip install "markitdown[docx,xlsx,pptx,pdf]"`
 <!-- paw:doc-data-min:end -->
+
+<!-- paw:local-memory:start -->
+## paw capability · local-memory
+Local-first semantic memory and cross-agent recall through ICM. Keeps durable project decisions and high-signal lessons outside always-on prompt context, then recalls bounded slices when needed.
+
+- **icm** (`icm`): Local semantic memory CLI for durable decisions, lessons, and cross-host recall without always-loaded MCP schema tax.
+  - usage: `icm.exe recall "what did we decide about bundle init" --read-only   |   icm.exe store -t decisions -c "summary" -i high -k "bundle"`
+  - install: `Follow ICM installer or existing machine install; verify with icm.exe --version`
+<!-- paw:local-memory:end -->

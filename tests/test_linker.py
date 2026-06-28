@@ -130,6 +130,20 @@ class LinkerSliceZeroTests(unittest.TestCase):
         self.assertNotEqual(codex.health, "drifted")
         self.assertNotEqual(claude.health, "drifted")
 
+    def test_z_code_uses_agents_context_as_host_surface(self) -> None:
+        ctx = self.root / "AGENTS.md"
+        ctx.write_text("# shared agent context\n", encoding="utf-8")
+
+        result = apply_plan(
+            build_plan("local-memory", host="z-code", context=str(ctx), root=self.root),
+            root=self.root,
+        )
+
+        self.assertEqual(result.status, "ok")
+        self.assertTrue(has_block(ctx.read_text(encoding="utf-8"), "local-memory"))
+        linked = verify("local-memory", host="z-code", context=str(ctx), root=self.root)
+        self.assertIn(linked.health, ("healthy", "degraded"))
+
     def test_apply_refuses_a_stale_plan_after_drift(self) -> None:
         stale = self._plan()  # captures the pre-edit fingerprint
         self.ctx.write_text("# project\n\nedited elsewhere\n", encoding="utf-8")
@@ -144,6 +158,16 @@ class LinkerSliceZeroTests(unittest.TestCase):
         apply_plan(self._plan(), root=self.root)
         linked = verify("repo-pack", context=str(self.ctx), root=self.root)
         self.assertIn(linked.health, ("healthy", "degraded"))  # binary may be absent in CI
+
+    def test_verify_accepts_ledger_with_utf8_bom(self) -> None:
+        apply_plan(self._plan(), root=self.root)
+        ledger = self.root / ".paw" / "state.json"
+        text = ledger.read_text(encoding="utf-8")
+        ledger.write_text("\ufeff" + text, encoding="utf-8")
+
+        linked = verify("repo-pack", context=str(self.ctx), root=self.root)
+
+        self.assertIn(linked.health, ("healthy", "degraded"))
 
     def test_verify_detects_drift(self) -> None:
         apply_plan(self._plan(), root=self.root)

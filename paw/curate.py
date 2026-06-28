@@ -27,18 +27,49 @@ flat recall is the locked 80% (plan decision #5).
 from __future__ import annotations
 
 import json
+import os
 import platform
 import re
 import subprocess
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
+from .memory_mesh import MemoryMesh, MeshScope
 from .recall import icm_recall
 
 _WORD = re.compile(r"[^\W_]+", re.UNICODE)
 WIKI_TOPIC = "mistakes"
 PENDING_TOPIC = "pending"
 _DUP = 0.5                       # Jaccard ≥ this over summaries → near-dup → bump
+
+
+def _env_int(name: str, default: int) -> int:
+    """Bounded env override so a stray env cannot zero out a safety threshold."""
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+# pending-count thresholds drive the hook nudge (Layer 2) and the dry-run
+# auto-preview. Tunable via env so owners can adapt without code edits.
+PENDING_WARN = _env_int("PAW_PENDING_WARN", 30)
+PENDING_CRITICAL = _env_int("PAW_PENDING_CRITICAL", 80)
+
+# MeshLock that serialises the write path across Claude/Codex/Z Code Stop hooks
+# firing close together. Opt out with PAW_CURATE_LOCK=0 (single-host / manual).
+_CURATE_LOCK_TTL = 120
+_CURATE_LOCK_NAME = "curate-write"
+_CURATE_SCOPE = MeshScope(project="portable-harness", run_id="curate")
+
+
+def _curate_lock_enabled() -> bool:
+    return os.environ.get("PAW_CURATE_LOCK", "1") != "0"
 _RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 _RANK_INV = {v: k for k, v in _RANK.items()}
 
@@ -107,6 +138,19 @@ def list_pending(runner: StrRunner | None = None) -> list[dict]:
     except ValueError:
         return []
     return [m for m in data if isinstance(m, dict)] if isinstance(data, list) else []
+
+
+def pending_count(runner: StrRunner | None = None) -> int:
+    """Cheap count of pending candidates without parsing content.
+
+    Used by the memory hook (Layer 2) to decide whether to nudge the agent. A
+    failed or malformed ICM response returns 0 — the hook must never crash an
+    agent turn because curation telemetry is unavailable.
+    """
+    try:
+        return len(list_pending(runner))
+    except Exception:
+        return 0
 
 
 @dataclass
@@ -187,6 +231,7 @@ class CurateResult:
     decisions: list[Decision]
     applied: int
     wrote: bool
+    reason: str = ""
 
     @property
     def counts(self) -> dict:
@@ -197,11 +242,15 @@ class CurateResult:
 
     def to_dict(self) -> dict:
         return {"applied": self.applied, "wrote": self.wrote, "counts": self.counts,
+                "reason": self.reason,
                 "decisions": [d.to_dict() for d in self.decisions]}
 
     def render(self, surface: bool = False) -> str:
         if not self.decisions:
-            return "" if surface else "🧹 curate: pending is empty"
+            base = "" if surface else "🧹 curate: pending is empty"
+            if surface and self.reason:
+                return f"🧹 curate: {self.reason}"
+            return base
         c = self.counts
         head = (f"🧹 curate: {len(self.decisions)} pending — "
                 f"add={c['add']} bump={c['bump']} skip={c['skip']}"
@@ -209,7 +258,27 @@ class CurateResult:
         out = [head]
         for d in self.decisions:
             out.append(f"  • [{d.op}·{d.importance}] {d.content[:80]} — {d.reason}")
+        if self.reason:
+            out.append(f"  note: {self.reason}")
         return "\n".join(out)
+
+
+def pending_preview(*, limit: int | None = None) -> str:
+    """One-line dry-run summary suitable for a hook context block.
+
+    Returns "" when pending is empty or ICM is unavailable — the hook must
+    stay quiet when there is nothing actionable.
+    """
+    try:
+        result = curate(write=False, limit=limit)
+    except Exception:
+        return ""
+    if not result.decisions:
+        return ""
+    c = result.counts
+    n = len(result.decisions)
+    return (f"🧹 paw: {n} pending → would ADD {c['add']}, BUMP {c['bump']}, "
+            f"SKIP {c['skip']}. Run `paw curate` to apply.")
 
 
 def curate(
@@ -222,7 +291,14 @@ def curate(
     write: bool = True,
     limit: int | None = None,
 ) -> CurateResult:
-    """Reconcile every pending candidate into the wiki; drain pending. Never raises."""
+    """Reconcile every pending candidate into the wiki; drain pending. Never raises.
+
+    When ``write=True`` and the cross-host lock is enabled (default), the write
+    path is serialised through ``MemoryMesh.acquire_lock`` so that Claude/Codex/
+    Z Code Stop hooks firing close together cannot race the store/forget cycle
+    and double-bump the same lesson. If the lock is already held, the call
+    returns an empty write-less result with ``reason`` set rather than writing.
+    """
     store = store_runner or _run_rc
     update = update_runner or _run_rc
     forget = forget_runner or _run_rc
@@ -233,14 +309,67 @@ def curate(
     if limit is not None:
         pend = pend[:limit]
     decisions = [reconcile(p, recall_fn) for p in pend]
+
+    # Dry-run never needs the lock and never writes.
+    if not write:
+        return CurateResult(decisions, applied=0, wrote=False)
+
+    # No work to persist: skip the lock entirely so an empty pending queue
+    # never creates a coordination file.
+    if not decisions:
+        return CurateResult(decisions, applied=0, wrote=False)
+
     applied = 0
-    if write:
-        for d in decisions:
-            try:
-                if _apply(d, store, update, forget):
-                    applied += 1
-                else:
-                    d.op = "skip"
-            except Exception:
+    if not _curate_lock_enabled():
+        applied = _apply_all(decisions, store, update, forget)
+        return CurateResult(decisions, applied=applied, wrote=True)
+
+    owner = _curate_lock_owner()
+    mesh = MemoryMesh()
+    acquired = mesh.acquire_lock(
+        _CURATE_SCOPE,
+        name=_CURATE_LOCK_NAME,
+        owner=owner,
+        purpose="serialise curate write path across hosts",
+        ttl_seconds=_CURATE_LOCK_TTL,
+    )
+    if acquired.status == "blocked":
+        return CurateResult(
+            decisions=decisions,
+            applied=0,
+            wrote=False,
+            reason=f"another host ({acquired.locks[0].owner if acquired.locks else 'unknown'}) "
+                   "is curating; re-run `paw curate` shortly",
+        )
+    try:
+        applied = _apply_all(decisions, store, update, forget)
+    finally:
+        mesh.release_lock(_CURATE_SCOPE, name=_CURATE_LOCK_NAME, owner=owner)
+    return CurateResult(decisions, applied=applied, wrote=True)
+
+
+def _apply_all(
+    decisions: list[Decision],
+    store: RcRunner,
+    update: RcRunner,
+    forget: RcRunner,
+) -> int:
+    """Apply decisions defensively; downgrade to ``skip`` on any failure."""
+    applied = 0
+    for d in decisions:
+        try:
+            if _apply(d, store, update, forget):
+                applied += 1
+            else:
                 d.op = "skip"
-    return CurateResult(decisions, applied, write)
+        except Exception:
+            d.op = "skip"
+    return applied
+
+
+def _curate_lock_owner() -> str:
+    """Stable owner id for the curate lock across a host's processes."""
+    owner = f"host-{platform.node()}-pid-{os.getpid()}"
+    # _validate_segment allows [A-Za-z0-9._-]; sanitize anything else.
+    clean = re.sub(r"[^A-Za-z0-9._-]", "_", owner).strip("._-")
+    return clean or "curate-host"

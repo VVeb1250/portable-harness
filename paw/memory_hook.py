@@ -4,6 +4,12 @@ This is the thin reliability layer that keeps agents from forgetting to poll the
 mesh.  It is deliberately host-agnostic: hook systems pass JSON on stdin, this
 module derives project/member/run identity, updates heartbeat/registration, and
 returns a tiny additional-context block only when there is something new.
+
+It also nudges the agent toward curation hygiene: when the ICM ``pending`` topic
+grows past ``PENDING_WARN`` the hook appends a one-line reminder, and past
+``PENDING_CRITICAL`` it runs a dry-run preview of curation so the agent can see
+what would be promoted without waiting for the queue to overflow. The bulk write
+itself is never done here — that stays an explicit ``paw curate`` call.
 """
 
 from __future__ import annotations
@@ -11,10 +17,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
+from .curate import PENDING_CRITICAL, PENDING_WARN, pending_count, pending_preview
 from .memory_mesh import MemoryMesh, MeshEvent, MeshLock, MeshScope
 
 HookEvent = Literal["session-start", "user-prompt", "stop"]
@@ -22,6 +30,11 @@ HookEvent = Literal["session-start", "user-prompt", "stop"]
 MAX_EVENTS_IN_CONTEXT = 6
 MAX_LOCKS_IN_CONTEXT = 4
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "Stop")
+
+# Refresh the pending count at most this often per member so a chatty session
+# does not spawn an ICM subprocess on every UserPromptSubmit. Cached in the
+# per-member hook state file alongside the mesh cursor.
+PENDING_COUNT_TTL_SECONDS = 300
 
 
 @dataclass(frozen=True)
@@ -127,7 +140,13 @@ def build_config(
     )
 
 
-def run_memory_hook(config: MemoryHookConfig) -> MemoryHookResult:
+def run_memory_hook(
+    config: MemoryHookConfig,
+    *,
+    count_runner: Callable[[], int] | None = None,
+    preview_runner: Callable[[], str] | None = None,
+    now: Callable[[], float] | None = None,
+) -> MemoryHookResult:
     mesh = MemoryMesh(root=config.state_dir)
     scope = MeshScope(project=config.project, run_id=config.run_id)
     hook_state = _load_state(config)
@@ -146,6 +165,15 @@ def run_memory_hook(config: MemoryHookConfig) -> MemoryHookResult:
         mesh.heartbeat(scope, member=config.member)
 
     since = int(hook_state.get("cursor", 0) or 0)
+    hygiene = _hygiene_context(
+        config,
+        hook_state,
+        count_runner=count_runner,
+        preview_runner=preview_runner,
+        now=now,
+    )
+    _save_state(config, hook_state)
+
     if config.event in ("session-start", "user-prompt"):
         poll = mesh.poll(scope, member=config.member, since=since)
         hook_state["cursor"] = poll.cursor
@@ -155,6 +183,7 @@ def run_memory_hook(config: MemoryHookConfig) -> MemoryHookResult:
             locks=_interesting_locks(poll.locks, config.member),
             cursor=poll.cursor,
         )
+        context = "\n".join(part for part in (context, hygiene) if part)
         return MemoryHookResult(
             status="success",
             summary=f"memory hook {config.event} cursor {poll.cursor}",
@@ -164,11 +193,81 @@ def run_memory_hook(config: MemoryHookConfig) -> MemoryHookResult:
 
     hook_state["cursor"] = since
     _save_state(config, hook_state)
+    # Stop: nothing new from the mesh to surface, but a pending-overflow nudge
+    # is still useful on session end so the agent logs the curation todo.
     return MemoryHookResult(
         status="success",
         summary=f"memory hook {config.event} heartbeat recorded",
+        additional_context=hygiene,
         cursor=since,
     )
+
+
+def _hygiene_context(
+    config: MemoryHookConfig,
+    hook_state: dict[str, object],
+    *,
+    count_runner: Callable[[], int] | None,
+    preview_runner: Callable[[], str] | None,
+    now: Callable[[], float] | None,
+) -> str:
+    """Build the pending-hygiene context block, with a per-member count cache.
+
+    Returns "" when pending is small or ICM is unavailable, so the hook adds
+    nothing to the agent's prompt on a clean queue.
+    """
+    clock = now or time.time
+    count, stamp = _pending_count_cached(config, hook_state, count_runner, clock)
+    if count < PENDING_WARN:
+        return ""
+    if count >= PENDING_CRITICAL:
+        # Dry-run preview only — never writes from the hook hot path.
+        preview = _safe_preview(preview_runner)
+        if preview:
+            return preview
+        # Preview unavailable (ICM down / curate error): still warn the count.
+        return _nudge_line(count, critical=True)
+    return _nudge_line(count, critical=False)
+
+
+def _pending_count_cached(
+    config: MemoryHookConfig,
+    hook_state: dict[str, object],
+    count_runner: Callable[[], int] | None,
+    clock: Callable[[], float],
+) -> tuple[int, float]:
+    """Return (count, new_stamp). Reuses a cached count within the TTL window."""
+    stamp = float(hook_state.get("pending_stamp", 0) or 0)
+    cached = hook_state.get("pending_count")
+    if cached is not None and (clock() - stamp) < PENDING_COUNT_TTL_SECONDS:
+        try:
+            return int(cached), stamp
+        except (TypeError, ValueError):
+            pass
+    runner = count_runner or pending_count
+    try:
+        count = int(runner())
+    except Exception:
+        count = 0
+    new_stamp = clock()
+    hook_state["pending_count"] = count
+    hook_state["pending_stamp"] = new_stamp
+    return count, new_stamp
+
+
+def _safe_preview(preview_runner: Callable[[], str] | None) -> str:
+    runner = preview_runner or pending_preview
+    try:
+        return runner() or ""
+    except Exception:
+        return ""
+
+
+def _nudge_line(count: int, *, critical: bool) -> str:
+    flag = "🧠" if critical else "🧹"
+    verb = "overflow — " if critical else ""
+    return (f"{flag} paw memory: {verb}{count} pending in ICM. "
+            "Run `paw curate --dry-run` to review, `paw curate` to promote.")
 
 
 def hook_stdout(result: MemoryHookResult, *, hook_event_name: str) -> str:
