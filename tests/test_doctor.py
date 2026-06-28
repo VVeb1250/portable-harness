@@ -173,12 +173,23 @@ class DoctorTests(unittest.TestCase):
                 config_path=str(claude_config),
                 config_present=True,
                 memory_hooks=("py -m paw reflect --capture", "py -m paw curate --surface", "py -m paw memory hook --host claude-code --event user-prompt"),
+                coverage=mock.Mock(
+                    recall_push=False,
+                    mesh_hook=True,
+                    reflect_stop=True,
+                    curate_start=True,
+                    team_sink=False,
+                    memoir_sync=False,
+                ),
             )
             report = run_doctor(root=self.root, hosts=("claude-code",))
 
         self.assertEqual(len(report.hooks), 1)
         text = render_report(report)
-        self.assertIn("paw hooks", text)
+        # Coverage matrix includes lane markers
+        self.assertIn("recall-push", text)
+        self.assertIn("reflect-stop", text)
+        self.assertIn("curate-start", text)
 
     def test_hook_check_no_config(self) -> None:
         with (

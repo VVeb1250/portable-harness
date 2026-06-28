@@ -12,7 +12,7 @@ import json
 import subprocess
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -84,14 +84,56 @@ def _query_icm() -> ICMCheck | None:
 
 
 @dataclass(frozen=True)
+class HookCoverage:
+    """Per-host, per-lane coverage matrix.
+
+    Distinguishes these lanes so doctor can report accurately:
+    - recall_push:  paw surface / paw_block recall at task start
+    - mesh_hook:    paw memory hook (register/heartbeat/poll)
+    - reflect_stop: paw reflect --capture on Stop event
+    - curate_start: paw curate --surface on SessionStart
+    - team_sink:    TeamKernel memory planning seam
+    - memoir_sync:  Memoir distillation (blocked until design stabilises)
+    """
+    host: str
+    recall_push: bool = False
+    mesh_hook: bool = False
+    reflect_stop: bool = False
+    curate_start: bool = False
+    team_sink: bool = False
+    memoir_sync: bool = False
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+    def summary(self) -> str:
+        lanes = []
+        if self.recall_push:
+            lanes.append("recall-push")
+        if self.mesh_hook:
+            lanes.append("mesh-hook")
+        if self.reflect_stop:
+            lanes.append("reflect-stop")
+        if self.curate_start:
+            lanes.append("curate-start")
+        if self.team_sink:
+            lanes.append("team-sink")
+        if self.memoir_sync:
+            lanes.append("memoir-sync")
+        return ", ".join(lanes) if lanes else "none"
+
+
+@dataclass(frozen=True)
 class HookCheck:
     host: str
     config_path: str | None
     config_present: bool
     memory_hooks: tuple[str, ...]
+    coverage: HookCoverage = field(default_factory=lambda: HookCoverage(host="?"))
 
     def to_dict(self) -> dict[str, object]:
-        return asdict(self)
+        base = asdict(self)
+        return base
 
 
 _PAW_MEMORY_COMMANDS = (
@@ -117,6 +159,7 @@ def _check_host_hooks(host: str) -> HookCheck:
             config_path=str(path),
             config_present=False,
             memory_hooks=(),
+            coverage=HookCoverage(host=host),
         )
 
     if host == "z-code":
@@ -128,11 +171,13 @@ def _check_host_hooks(host: str) -> HookCheck:
         for cmd in ("paw surface", "paw memory hook", "paw memory post"):
             if cmd in text:
                 found.append(cmd)
+        coverage = _build_coverage(host, text)
         return HookCheck(
             host=host,
             config_path=str(path),
             config_present=True,
             memory_hooks=tuple(found),
+            coverage=coverage,
         )
 
     try:
@@ -143,21 +188,25 @@ def _check_host_hooks(host: str) -> HookCheck:
             config_path=str(path),
             config_present=True,
             memory_hooks=(),
+            coverage=HookCoverage(host=host),
         )
 
     found: list[str] = []
     hooks = data.get("hooks") if isinstance(data, dict) else None
+    text = ""
     if isinstance(hooks, dict):
         text = json.dumps(hooks)
         for cmd in _PAW_MEMORY_COMMANDS:
             if cmd in text:
                 found.append(cmd)
 
+    coverage = _build_coverage(host, text)
     return HookCheck(
         host=host,
         config_path=str(path),
         config_present=True,
         memory_hooks=tuple(found),
+        coverage=coverage,
     )
 
 
@@ -460,6 +509,19 @@ def _next_actions(
     return actions
 
 
+def _build_coverage(host: str, text: str) -> HookCoverage:
+    """Build a HookCoverage matrix from hook config text."""
+    return HookCoverage(
+        host=host,
+        recall_push="paw surface" in text or "paw_block" in text,
+        mesh_hook="paw memory hook" in text or "paw memory install" in text,
+        reflect_stop="paw reflect" in text,
+        curate_start="paw curate --surface" in text or "curate" in text,
+        team_sink="paw team" in text or "team sink" in text,
+        memoir_sync="memoir" in text,
+    )
+
+
 def _render_hook_events(hooks: tuple[str, ...]) -> str:
     events = set()
     for cmd in hooks:
@@ -500,14 +562,23 @@ def render_report(report: DoctorReport, *, command: str = "doctor") -> str:
 
     if report.hooks:
         lines.append("hooks:")
+        # Coverage matrix header
+        lines.append("  host           recall-push  mesh-hook    reflect-stop  curate-start  team-sink  memoir-sync")
         for hook in report.hooks:
+            c = hook.coverage
+            y = "yes" if c else "no"
+            lines.append(
+                f"  {hook.host:<14} {str(c.recall_push):<12} {str(c.mesh_hook):<12} "
+                f"{str(c.reflect_stop):<13} {str(c.curate_start):<12} "
+                f"{str(c.team_sink):<9} {str(c.memoir_sync):<10}"
+            )
             if hook.config_present and hook.memory_hooks:
                 events = _render_hook_events(hook.memory_hooks)
-                lines.append(f"  - {hook.host}: paw hooks on {events}")
+                lines.append(f"      raw events: {events}")
             elif hook.config_present:
-                lines.append(f"  - {hook.host}: config found, no paw memory hooks")
+                lines.append(f"      config found, no paw memory hooks")
             else:
-                lines.append(f"  - {hook.host}: no hook config")
+                lines.append(f"      no hook config")
 
     if report.mesh:
         lines.append(f"mesh: {report.mesh.summary} ({report.mesh.status})")

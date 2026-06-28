@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from paw.recall import grep_committed, icm_recall, recall
 
@@ -76,6 +78,48 @@ class RecallResultTests(unittest.TestCase):
         res = recall("kubernetes helm", root=self.root, icm_runner=lambda c: "[]")
         self.assertTrue(res.empty)
         self.assertIn("no matches", res.render())
+
+
+class DistrustFilterTests(unittest.TestCase):
+    """Recall suppresses memories whose recalled fix keeps failing (loop closure)."""
+
+    def _recall_with_distrust(self, distrust_map: dict[str, int], canned_memories: str):
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.dict(os.environ, {"PAW_HOME": d}):
+                # seed the distrust ledger at the path recall reads
+                from paw.memory import distrust
+                p = distrust._path()
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(
+                    "".join(json.dumps({"id": i, "miss": m}) + "\n" for i, m in distrust_map.items()),
+                    encoding="utf-8",
+                )
+                return icm_recall("query", runner=lambda c: canned_memories)
+
+    def test_distrusted_id_is_filtered_from_recall(self) -> None:
+        canned = json.dumps([
+            {"id": "bad-mem", "summary": "stale fix", "importance": "high", "topic": "mistakes"},
+            {"id": "good-mem", "summary": "working fix", "importance": "high", "topic": "mistakes"},
+        ])
+        out = self._recall_with_distrust({"bad-mem": 5}, canned)
+        ids = {m.get("id") for m in out}
+        self.assertNotIn("bad-mem", ids)
+        self.assertIn("good-mem", ids)
+
+    def test_below_threshold_not_filtered(self) -> None:
+        canned = json.dumps([
+            {"id": "mem-1", "summary": "fix", "importance": "high", "topic": "mistakes"},
+        ])
+        out = self._recall_with_distrust({"mem-1": 2}, canned)  # threshold=3
+        self.assertEqual(len(out), 1)
+
+    def test_pending_never_affected_by_distrust(self) -> None:
+        """Pending entries are always excluded by topic, before distrust."""
+        canned = json.dumps([
+            {"id": "p1", "summary": "pending thing", "importance": "high", "topic": "pending"},
+        ])
+        out = self._recall_with_distrust({"p1": 5}, canned)
+        self.assertEqual(out, [])
 
 
 if __name__ == "__main__":

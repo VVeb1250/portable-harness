@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,7 +9,7 @@ from unittest import mock
 
 import paw.router_block as rb
 from paw.surface_context import build_surface_context, infer_intents
-from paw.router_block import match_sets, paw_block, set_routing
+from paw.router_block import match_sets, paw_block, set_adoption_posture, set_routing
 from paw.linker import apply_plan, build_plan
 from paw.sets.loader import get_set
 
@@ -230,6 +231,116 @@ class SetRoutingTests(unittest.TestCase):
         self.assertIn("context-workbench", block)
         self.assertIn("paw plan context-workbench (conditional)", block)
         self.assertNotIn("paw apply context-workbench", block)
+
+    def test_ready_non_default_set_routes_to_task_specific_plan(self) -> None:
+        with mock.patch.object(rb, "_LINK_STATE_PROBE", lambda s, cwd: "absent"):
+            block = paw_block(
+                "package the current git diff and relevant repo context",
+                recall_runner=lambda p: "[]",
+            )
+        self.assertIn("repo-pack", block)
+        self.assertIn("paw plan repo-pack (task-specific)", block)
+        self.assertNotIn("paw apply repo-pack", block)
+
+    def test_adoption_posture_distinguishes_default_from_task_specific(self) -> None:
+        self.assertEqual(set_adoption_posture(get_set("efficiency-min")), "default")
+        self.assertEqual(set_adoption_posture(get_set("repo-pack")), "task-specific")
+        self.assertEqual(set_adoption_posture(get_set("context-workbench")), "conditional")
+
+
+class OutcomeLoopTests(unittest.TestCase):
+    """Router demotes sets the user keeps ignoring (loop closure at match_sets).
+
+    Uses the _OUTCOMES_PROBE seam so these assertions never touch the real
+    ~/.paw ledger — match_sets is called by every prompt, so polluting it would
+    silently change real routing for every other test.
+    """
+
+    def setUp(self) -> None:
+        self._saved_probe = rb._OUTCOMES_PROBE
+
+    def tearDown(self) -> None:
+        rb._OUTCOMES_PROBE = self._saved_probe
+
+    def test_demoted_set_is_filtered_from_match_sets(self) -> None:
+        logged: list[list[str]] = []
+        rb._OUTCOMES_PROBE = ({"secure-agent"}, lambda names: logged.append(names))
+        names = {s.name for s, _ in match_sets("how do I stop a leaked api key / secret")}
+        self.assertNotIn("secure-agent", names)
+
+    def test_used_set_is_not_demoted(self) -> None:
+        # empty demoted set → secure-agent (which the prompt matches) still surfaces
+        rb._OUTCOMES_PROBE = (set(), lambda _names: None)
+        names = {s.name for s, _ in match_sets("how do I stop a leaked api key / secret")}
+        self.assertIn("secure-agent", names)
+
+    def test_match_sets_logs_suggestion(self) -> None:
+        """A surfaced set gets its suggestion counter bumped."""
+        logged: list[list[str]] = []
+        rb._OUTCOMES_PROBE = (set(), lambda names: logged.append(names))
+        list(match_sets("how do I stop a leaked api key / secret"))
+        self.assertTrue(logged)  # mark_suggested was called
+        self.assertTrue(any("secure-agent" in batch for batch in logged))
+
+    def test_demoted_set_not_counted_as_suggestion(self) -> None:
+        """Filtering happens BEFORE logging — a demoted set is never suggested."""
+        logged: list[list[str]] = []
+        rb._OUTCOMES_PROBE = ({"secure-agent"}, lambda names: logged.append(names))
+        list(match_sets("how do I stop a leaked api key / secret"))
+        for batch in logged:
+            self.assertNotIn("secure-agent", batch)
+
+
+class SessionDedupTests(unittest.TestCase):
+    """A lesson already injected in a session doesn't re-inject (loop closure)."""
+
+    def test_lesson_injects_first_time(self) -> None:
+        canned = json.dumps([{
+            "id": "mem-1", "summary": "use py launcher on windows",
+            "importance": "high", "topic": "mistakes", "keywords": ["py", "windows"],
+        }])
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.dict(os.environ, {"PAW_HOME": d}):
+                with mock.patch.object(rb, "_LINK_STATE_PROBE", lambda s, cwd: "absent"):
+                    block = paw_block(
+                        "python windows launcher",
+                        session_id="sess-unique-1",
+                        recall_runner=lambda p: canned,
+                    )
+        self.assertIn("use py launcher", block)
+
+    def test_same_lesson_not_re_injected_same_session(self) -> None:
+        canned = json.dumps([{
+            "id": "mem-1", "summary": "use py launcher on windows",
+            "importance": "high", "topic": "mistakes", "keywords": ["py", "windows"],
+        }])
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.dict(os.environ, {"PAW_HOME": d}):
+                with mock.patch.object(rb, "_LINK_STATE_PROBE", lambda s, cwd: "absent"):
+                    first = paw_block(
+                        "python windows launcher", session_id="sess-x",
+                        recall_runner=lambda p: canned,
+                    )
+                    second = paw_block(
+                        "python windows launcher", session_id="sess-x",
+                        recall_runner=lambda p: canned,
+                    )
+        self.assertIn("use py launcher", first)
+        self.assertNotIn("use py launcher", second)  # deduped within session
+
+    def test_different_session_re_injects(self) -> None:
+        canned = json.dumps([{
+            "id": "mem-1", "summary": "use py launcher on windows",
+            "importance": "high", "topic": "mistakes", "keywords": ["py", "windows"],
+        }])
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.dict(os.environ, {"PAW_HOME": d}):
+                with mock.patch.object(rb, "_LINK_STATE_PROBE", lambda s, cwd: "absent"):
+                    paw_block("python windows", session_id="sess-a",
+                              recall_runner=lambda p: canned)
+                    block_b = paw_block("python windows", session_id="sess-b",
+                                        recall_runner=lambda p: canned)
+        self.assertIn("use py launcher", block_b)  # different session → re-injects
 
 
 if __name__ == "__main__":

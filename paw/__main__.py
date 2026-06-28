@@ -35,6 +35,7 @@ from paw.memory_hook import (
     load_hook_payload,
     run_memory_hook,
 )
+from paw.memory_governance import record_observation, run_governance
 from paw.memory_mesh import MemoryMesh, MeshResult, MeshScope
 from paw.recall import recall as recall_memory
 from paw.curate import curate as curate_pending
@@ -190,6 +191,10 @@ def _surface_audit(args: argparse.Namespace) -> int:
             print("actions:")
             for action, count in summary["actions"].items():
                 print(f"  - {action}: {count}")
+        if summary.get("postures"):
+            print("postures:")
+            for posture, count in summary["postures"].items():
+                print(f"  - {posture}: {count}")
     return 0
 
 
@@ -308,6 +313,31 @@ def _blackboard(args: argparse.Namespace) -> int:
 
 
 def _memory_mesh(args: argparse.Namespace) -> int:
+    if args.memory_action == "observe":
+        obs = record_observation(
+            args.sig,
+            lesson_id=args.lesson_id or "",
+            root=Path(args.memory_root) if args.memory_root else None,
+        )
+        if args.json:
+            print(json.dumps(obs.__dict__, ensure_ascii=False, indent=2))
+        else:
+            linked = f" linked={obs.lesson_id}" if obs.lesson_id else ""
+            print(f"memory observe: {obs.sig} count={obs.count}{linked}")
+        return 0
+
+    if args.memory_action == "governance":
+        result = run_governance(
+            root=Path(args.memory_root) if args.memory_root else None,
+            threshold=args.threshold,
+            write=not args.dry_run,
+        )
+        if args.json:
+            print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(result.render())
+        return 0
+
     if args.memory_action == "install-hooks":
         hosts = ("claude-code", "codex") if args.host == "all" else (args.host,)
         results = []
@@ -926,6 +956,24 @@ def main(argv: list[str] | None = None) -> int:
         help="coordinate several local agent sessions over shared memory lanes",
     )
     memory_sub = memory.add_subparsers(dest="memory_action", required=True)
+
+    observe = memory_sub.add_parser(
+        "observe",
+        help="record a repeated memory miss signature for governance",
+    )
+    observe.add_argument("--sig", required=True, help="stable miss signature, e.g. command not found|python")
+    observe.add_argument("--lesson-id", help="lesson/memory id that should have prevented the miss")
+    observe.add_argument("--memory-root", help="default ~/.paw/memory")
+    observe.add_argument("--json", action="store_true")
+
+    governance = memory_sub.add_parser(
+        "governance",
+        help="turn repeated observations into rewrite/retire proposals",
+    )
+    governance.add_argument("--threshold", type=int, default=3)
+    governance.add_argument("--memory-root", help="default ~/.paw/memory")
+    governance.add_argument("--dry-run", action="store_true")
+    governance.add_argument("--json", action="store_true")
 
     def add_memory_scope(mp: argparse.ArgumentParser) -> None:
         mp.add_argument("--project", required=True)

@@ -23,6 +23,7 @@ from .router_block import (
     _rung_routing,
     _set_next_action,
     match_sets,
+    set_adoption_posture,
     set_link_state,
 )
 
@@ -33,6 +34,7 @@ class SurfaceSet:
     score: float
     state: str
     action: str
+    posture: str
     description: str
     routing: tuple[str, ...] = ()
 
@@ -89,6 +91,7 @@ def build_surface_decision(
             desc = (curated.description or "").strip().splitlines()[0][:70]
             root = cwd or ctx.cwd
             state = set_link_state(curated, root)
+            posture = set_adoption_posture(curated)
             routing: tuple[str, ...] = ()
             if state == "healthy":
                 routing = tuple(_rung_routing(curated, prompt, root, context=ctx)[:2])
@@ -111,6 +114,7 @@ def build_surface_decision(
                     score=score,
                     state=state,
                     action=action,
+                    posture=posture,
                     description=desc,
                     routing=routing,
                 )
@@ -154,9 +158,10 @@ def write_surface_audit(decision: SurfaceDecision, *, path: Path | None = None) 
 
 def summarize_surface_audit(path: Path) -> dict[str, object]:
     if not path.exists():
-        return {"path": str(path), "events": 0, "sets": {}, "actions": {}}
+        return {"path": str(path), "events": 0, "sets": {}, "actions": {}, "postures": {}}
     set_counts: Counter[str] = Counter()
     action_counts: Counter[str] = Counter()
+    posture_counts: Counter[str] = Counter()
     events = 0
     with path.open(encoding="utf-8") as handle:
         for line in handle:
@@ -170,13 +175,17 @@ def summarize_surface_audit(path: Path) -> dict[str, object]:
                     continue
                 name = str(entry.get("name", ""))
                 action = str(entry.get("action", ""))
+                posture = str(entry.get("posture", ""))
                 if name:
                     set_counts[name] += 1
                 if action:
                     action_counts[action] += 1
+                if posture:
+                    posture_counts[posture] += 1
     return {
         "path": str(path),
         "events": events,
         "sets": dict(set_counts.most_common()),
         "actions": dict(action_counts.most_common()),
+        "postures": dict(posture_counts.most_common()),
     }

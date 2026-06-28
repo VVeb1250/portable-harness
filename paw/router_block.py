@@ -50,6 +50,7 @@ _INTENT_BOOSTS: dict[str, dict[str, float]] = {
 
 RecallRunner = Callable[[str], str]
 LinkState = Literal["absent", "healthy", "degraded", "drifted"]
+AdoptionPosture = Literal["default", "task-specific", "conditional", "detect-first", "deferred"]
 
 
 def _norm(text: str) -> str:
@@ -112,9 +113,33 @@ def match_sets(
     routing_text = ctx.routing_text() or prompt
     pn, toks = _norm(routing_text), _tokens(routing_text)
     intents = infer_intents(ctx)
-    scored = ((s, _score_set(s, pn, toks, intents)) for s in load_all())
+    # Router outcome loop: stop surfacing capability sets the user keeps ignoring.
+    # Test seam (_OUTCOMES_PROBE) lets tests assert loop behavior without touching
+    # the real ledger. Fail-closed to "no demotion" on any error.
+    if _OUTCOMES_PROBE is not None:
+        demoted, _mark = _OUTCOMES_PROBE
+    else:
+        try:
+            from .memory.outcomes import demoted_names
+            demoted = demoted_names()
+        except Exception:
+            demoted = set()
+    candidates = (s for s in load_all() if s.name not in demoted)
+    scored = ((s, _score_set(s, pn, toks, intents)) for s in candidates)
     hits = sorted((x for x in scored if x[1] >= _SET_FLOOR), key=lambda x: -x[1])
-    return hits[:limit]
+    hits = hits[:limit]
+    # Count the emission AFTER demotion/dedup filtering — only sets actually
+    # surfaced count toward the suggest tally. Fail-safe no-op.
+    if hits:
+        try:
+            if _OUTCOMES_PROBE is not None:
+                _mark([s.name for s, _ in hits])
+            else:
+                from .memory.outcomes import mark_suggested
+                mark_suggested([s.name for s, _ in hits])
+        except Exception:
+            pass
+    return hits
 
 
 def _root(cwd: str | None) -> Path:
@@ -139,6 +164,11 @@ def _which(binary: str, cwd: str | None = None) -> bool:
 _PATH_PROBE: Callable[[str], object] | None = None
 # test seam: keep router tests independent of the real .paw ledger/filesystem.
 _LINK_STATE_PROBE: Callable[[CuratedSet, str | None], LinkState] | None = None
+# test seam: inject the outcome-loop's (demoted_names, mark_suggested_fn) pair so
+# tests can assert loop behavior WITHOUT touching the real ~/.paw ledger. When
+# None, the production path reads/writes the real ledger (fail-safe no-op on
+# any error). NOTE: production callers never set this — it is for tests only.
+_OUTCOMES_PROBE: tuple[set[str], Callable[[list[str]], None]] | None = None
 
 
 def _ledger_records_for_set(data: dict, set_name: str) -> list[dict]:
@@ -285,15 +315,39 @@ def set_routing(
 
 def _set_next_action(s: CuratedSet) -> str:
     """Small, non-mutating-first hint when a matching set is not live."""
-    if s.catalog_status == "detect-first" or s.link_scope == "detect-first":
+    posture = set_adoption_posture(s)
+    if posture == "detect-first":
         return f"paw plan {s.name} (detect first)"
-    if s.catalog_status == "conditional" or s.link_scope == "conditional":
+    if posture == "conditional":
         return f"paw plan {s.name} (conditional)"
+    if posture == "deferred":
+        return f"paw plan {s.name} (deferred)"
+    if posture == "task-specific":
+        return f"paw plan {s.name} (task-specific)"
     if s.link_scope == "project":
         return f"paw apply {s.name} (project-linked)"
     if s.default_init:
         return f"paw apply {s.name} (foundation)"
     return f"paw apply {s.name}"
+
+
+def set_adoption_posture(s: CuratedSet) -> AdoptionPosture:
+    """Classify whether a set belongs in daily habits or only a task gate.
+
+    This is intentionally conservative: only ``default_init`` sets may become
+    baseline habits. Ready-but-optional sets still need an explicit plan/use
+    moment, because otherwise the router turns quality/capability tools into
+    ambient nagging.
+    """
+    if s.default_init:
+        return "default"
+    if s.catalog_status == "detect-first" or s.link_scope == "detect-first":
+        return "detect-first"
+    if s.catalog_status in {"deferred", "candidate"}:
+        return "deferred"
+    if s.catalog_status == "conditional" or s.link_scope == "conditional":
+        return "conditional"
+    return "task-specific"
 
 
 # --------------------------------------------------------------------------- #
@@ -327,11 +381,20 @@ def _relevant_lessons(prompt: str, runner: RecallRunner) -> list[dict]:
     if not isinstance(memories, list):
         return []
     toks = _tokens(prompt)
+    # Suppress memories whose recalled fix keeps failing (effectiveness overlay).
+    # Fail-closed to "no filtering" if the ledger is unreadable.
+    try:
+        from .memory.distrust import distrusted_ids
+        suppressed = distrusted_ids()
+    except Exception:
+        suppressed = set()
     out: list[dict] = []
     for m in memories:
         if not isinstance(m, dict):
             continue
         if m.get("importance") not in _MEM_IMPORTANCE:
+            continue
+        if suppressed and str(m.get("id", "")) in suppressed:
             continue
         kws = {str(k).lower() for k in (m.get("keywords") or [])}
         if not (kws & toks):
@@ -386,6 +449,20 @@ def paw_block(
             parts.append("\n".join(lines))
 
         lessons = _relevant_lessons(prompt, recall_runner or _default_recall)
+        # Session inject dedup: a lesson already injected this session (within
+        # the ttl) doesn't re-surface — pure context rot otherwise. Pull-path
+        # `paw recall` is on-demand and skips this. Fail-closed to no dedup.
+        if session_id and lessons:
+            try:
+                from .memory import sessionlog
+                already = sessionlog.seen(session_id)
+                if already:
+                    lessons = [m for m in lessons
+                               if str(m.get("id", "")) not in already]
+                if lessons:
+                    sessionlog.mark(session_id, [str(m.get("id", "")) for m in lessons])
+            except Exception:
+                pass  # dedup unavailable — inject the lesson anyway
         if lessons:
             lines = ["🧠 paw memory (high-signal lessons):"]
             for m in lessons:

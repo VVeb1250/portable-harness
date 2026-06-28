@@ -10,6 +10,7 @@ from paw.blackboard import (
     BlackboardResult,
     BlackboardScope,
 )
+from paw.memory_sink import MemoryEvent, SinkDecision, evaluate as sink_evaluate
 from paw.router import RouteDecision
 
 Status = Literal["success", "warning", "error"]
@@ -267,6 +268,61 @@ class TeamKernel:
             or ("Check ICM health and retry the same run id once.",),
             route=decision.to_dict(),
         )
+
+
+def plan_memory_sink(result: TeamKernelResult, *, project: str = "", run_id: str = "") -> SinkDecision:
+    """Pure planning function — no live ICM writes.
+
+    Produces a `SinkDecision` from a `TeamKernelResult`:
+
+    - ``success`` → kind ``handoff`` or ``result``
+    - ``error`` + evaluator_failed → kind ``pending`` or ``mistake-candidate``
+    - ``error`` + other stopped reason → kind ``handoff`` (failure summary)
+
+    The caller (CLI, adapter, or test) inspects the decision and chooses
+    whether to execute it.
+    """
+    summary = result.summary
+    status = ""
+    if result.status == "success":
+        status = "success_handoff"
+        kind = "handoff"
+    elif result.stopped_reason == "evaluation_failed":
+        status = "failed_evaluator"
+        kind = "mistake"
+    else:
+        status = "failed_other"
+        kind = "handoff"
+
+    event = MemoryEvent(
+        kind=kind,
+        source=f"team:{status}",
+        content=(
+            f"TeamKernel run {run_id}: {result.summary[:200]}"
+        ),
+        importance="low" if kind == "handoff" else "medium",
+        project=project,
+        run_id=run_id,
+    )
+    return sink_evaluate(event)
+
+
+def plan_memory_handoff(*, project: str, run_id: str, kind: str,
+                        content: str, status: str) -> SinkDecision:
+    """Build a MemoryEvent for team handoff and run it through the sink.
+
+    Inject this into any test or adapter that wants to verify its planned
+    memory write without touching ICM.
+    """
+    event = MemoryEvent(
+        kind=kind,  # type: ignore[arg-type]
+        source=f"team:{status}",
+        content=content[:1000],
+        importance="medium",
+        project=project,
+        run_id=run_id,
+    )
+    return sink_evaluate(event)
 
 
 def _is_pass(content: str) -> bool:

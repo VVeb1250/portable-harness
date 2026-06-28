@@ -847,6 +847,14 @@ def apply_plan(plan: ChangePlan, *, root: Path | None = None) -> TxResult:
 
     note = " (PATH wired)" if path_wired else ""
     detail = ", ".join(wired) or "no-op"
+    # Router outcome loop: a successful apply is a suggestion CONVERSION. Record
+    # it so the router's demotion logic stops suppressing a set the user actually
+    # uses. Fail-safe no-op — a ledger failure must never fail an apply.
+    try:
+        from .memory.outcomes import mark_used
+        mark_used(plan.set_name)
+    except Exception:
+        pass
     return TxResult(
         "ok",
         f"linked {plan.set_name} → {detail}{note}",

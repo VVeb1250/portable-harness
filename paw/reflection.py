@@ -264,6 +264,13 @@ def _first_err_line(text: str) -> str:
     return "(no output)"
 
 
+def _exec_trigger(tool: str, cmd: str, err: str) -> str:
+    """Keep the attempted command in the durable summary, not only raw_excerpt."""
+    clean_cmd = re.sub(r"\s+", " ", cmd).strip() or "?"
+    clean_err = re.sub(r"\s+", " ", err).strip() or "(no output)"
+    return f"{tool} failed: command={clean_cmd[:120]} | error={clean_err[:140]}"[:260]
+
+
 def _tool_events(entries: list[dict], host: str = "claude-code") -> list[dict]:
     """Normalize a transcript into ordered tool events {name,input,is_error,text}.
 
@@ -397,7 +404,7 @@ def _exec_candidates(events: list[dict]) -> list[Candidate]:
         out.append(Candidate(
             type="execution",
             signal="fail-fix" if fix else "is_error",
-            trigger=f"{ev['name']} failed: {err}"[:170],
+            trigger=_exec_trigger(ev["name"], cmd, err),
             detail=(f"fixed by: {fix}" if fix else "no in-session fix found")[:170],
             raw=f"$ {cmd}\n{ev['text']}"[:600],
             terms=_terms(f"{ev['name']} {cmd} {err}"),

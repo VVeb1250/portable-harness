@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from .command_mistakes import ClassifyResult, classify
 from .memory_mesh import MemoryMesh, MeshScope
 from .recall import icm_recall
 
@@ -126,6 +127,98 @@ def _bump_keywords(keywords, seen: int) -> list[str]:
     return out
 
 
+_TOOL_PREFIX = re.compile(
+    r"^(?:shell_command|Bash|PowerShell|Write|Read|Grep|Glob)\s+failed:\s*",
+    re.I,
+)
+_STRUCTURED_FAIL = re.compile(
+    r"\bcommand=(?P<cmd>.*?)\s+\|\s+error=(?P<error>.*)",
+    re.I,
+)
+_FIX_SUFFIX = re.compile(r"\s*(?:→|\?)?\s*fixed by:\s*(?P<fix>.*)$", re.I)
+_NO_FIX_SUFFIX = re.compile(r"\s*(?:→|\?)?\s*no in-session fix found\s*$", re.I)
+
+
+def _strip_tool_prefix(text: str) -> str:
+    """Strip ``<tool> failed: `` prefix from captured error text."""
+    return _TOOL_PREFIX.sub("", text, count=1)
+
+
+def _strip_detail_suffix(text: str) -> str:
+    return _NO_FIX_SUFFIX.sub("", _FIX_SUFFIX.sub("", text)).strip()
+
+
+def trigger_from_pending(pending: dict) -> str:
+    """Extract a command trigger from a pending entry for the classifier.
+
+    When raw is empty (common for low-quality captures), falls back to
+    the original summary *before* the ``→ fixed by:`` heuristic suffix.
+    """
+    raw = str(pending.get("raw", "") or "")
+    lines = raw.splitlines()
+    for line in lines:
+        line = line.strip()
+        if line.startswith("$ "):
+            return line[2:].splitlines()[0][:160]
+    if lines:
+        return lines[0][:160]
+    summary = str(pending.get("summary", ""))
+    summary = _strip_detail_suffix(summary)
+    m = _STRUCTURED_FAIL.search(summary)
+    if m:
+        return m.group("cmd").strip()[:160]
+    return summary[:200]
+
+
+def has_structured_command(pending: dict) -> bool:
+    """True when capture preserved the attempted command, not just an error line."""
+    raw = str(pending.get("raw", "") or "")
+    if any(line.strip().startswith("$ ") for line in raw.splitlines()):
+        return True
+    return bool(_STRUCTURED_FAIL.search(str(pending.get("summary", "") or "")))
+
+
+def error_from_pending(pending: dict) -> str:
+    """Extract the original error text, without the command wrapper if present."""
+    raw_text = str(pending.get("raw", "") or "")
+    if raw_text.strip():
+        lines = raw_text.splitlines()
+        return lines[1].strip()[:200] if len(lines) > 1 else lines[0].strip()[:200]
+    summary = str(pending.get("summary", "") or "")
+    summary = _strip_detail_suffix(summary)
+    m = _STRUCTURED_FAIL.search(summary)
+    if m:
+        return m.group("error").strip()[:200]
+    return _strip_tool_prefix(summary)[:200]
+
+
+def fix_from_pending(pending: dict) -> str:
+    """Extract the in-session fix command from a pending summary, if present."""
+    summary = str(pending.get("summary", "") or "")
+    m = _FIX_SUFFIX.search(summary)
+    return m.group("fix").strip()[:160] if m else ""
+
+
+def _looks_like_command_failure(pending: dict) -> bool:
+    summary = str(pending.get("summary", "") or "")
+    raw = str(pending.get("raw", "") or "")
+    return bool(raw.strip() or _STRUCTURED_FAIL.search(summary) or _TOOL_PREFIX.search(summary))
+
+
+def _lesson_content(pending: dict, cr: ClassifyResult) -> str | None:
+    """Turn a command classification into a durable, old-style lesson line."""
+    cmd = trigger_from_pending(pending)
+    err = error_from_pending(pending)
+    fix = fix_from_pending(pending)
+    if cr.category != "one-off":
+        return f"{cr.summary} -> {cr.fix}" if cr.fix else cr.summary
+    if fix and has_structured_command(pending):
+        return f"Command `{cmd}` failed with `{err}` -> use `{fix}`"
+    if _looks_like_command_failure(pending):
+        return None
+    return str(pending.get("summary", "")).strip()
+
+
 # --------------------------------------------------------------------------- #
 # pending listing + reconcile
 # --------------------------------------------------------------------------- #
@@ -154,6 +247,20 @@ def pending_count(runner: StrRunner | None = None) -> int:
 
 
 @dataclass
+class ApplyReceipt:
+    """Tracks store/forget verification state for a single Decision.
+
+    returncode == 0 is necessary but not sufficient — the new memory must
+    be visible through the read path.  Forget is successful only when the
+    pending id disappears from the pending list.
+    """
+    stored: bool = False
+    visible: bool = False
+    forgotten: bool = False
+    reason: str = ""
+
+
+@dataclass
 class Decision:
     pending_id: str
     op: str                       # add | bump | skip
@@ -163,13 +270,22 @@ class Decision:
     target_id: str = ""
     score: float = 0.0
     reason: str = ""
+    receipt: ApplyReceipt | None = None
 
     def to_dict(self) -> dict:
-        return {
+        base = {
             "pending_id": self.pending_id, "op": self.op, "importance": self.importance,
             "target_id": self.target_id, "score": round(self.score, 3),
             "reason": self.reason, "content": self.content[:120],
         }
+        if self.receipt:
+            base["receipt"] = {
+                "stored": self.receipt.stored,
+                "visible": self.receipt.visible,
+                "forgotten": self.receipt.forgotten,
+                "reason": self.receipt.reason,
+            }
+        return base
 
 
 def reconcile(pending: dict, recall_fn: RecallFn | None = None) -> Decision:
@@ -200,6 +316,36 @@ def reconcile(pending: dict, recall_fn: RecallFn | None = None) -> Decision:
             reason=f"near-dup of {str(best.get('id',''))[:8]} (j={best_s:.2f}) → seen={seen}",
         )
 
+    # Classify command-error candidates if this looks like a command failure.
+    # If the classifier returns "skip", downgrade the decision.
+    if ptype == "type:execution":
+        cr = classify(trigger_from_pending(pending), error_from_pending(pending))
+        lesson = _lesson_content(pending, cr)
+        if cr.op == "skip":
+            return Decision(
+                pending_id=pid, op="skip", content=summary,
+                importance=str(pending.get("importance", "medium")),
+                keywords=[ptype, *terms[:6]],
+                score=best_s,
+                reason=f"classifier skip ({cr.category}): {cr.summary[:80]}",
+            )
+        if lesson is None:
+            return Decision(
+                pending_id=pid, op="skip", content=summary,
+                importance=str(pending.get("importance", "medium")),
+                keywords=[ptype, *terms[:6]],
+                score=best_s,
+                reason="classifier skip (one-off): no reusable fix",
+            )
+        # Promote — keep the classifier metadata so render can mention it
+        return Decision(
+            pending_id=pid, op="add", content=lesson,
+            importance=str(pending.get("importance", "medium")),
+            keywords=[ptype, *cr.mistake_keywords()[:4], *terms[:3], "seen:1"],
+            score=best_s,
+            reason=f"new lesson ({cr.category})" + (f" (closest j={best_s:.2f})" if best_s else ""),
+        )
+
     return Decision(
         pending_id=pid, op="add", content=summary,
         importance=str(pending.get("importance", "medium")),
@@ -211,7 +357,71 @@ def reconcile(pending: dict, recall_fn: RecallFn | None = None) -> Decision:
 # --------------------------------------------------------------------------- #
 # apply
 # --------------------------------------------------------------------------- #
-def _apply(d: Decision, store: RcRunner, update: RcRunner, forget: RcRunner) -> bool:
+def list_topic(topic: str, runner: StrRunner | None = None) -> list[dict]:
+    """List all entries in an ICM topic.  Used for store/forget verification."""
+    runner = runner or _run_out
+    cmd = [_icm_exe(), "list", "-t", topic, "--format", "json",
+           "--no-embeddings", "--read-only"]
+    try:
+        data = json.loads(runner(cmd) or "[]")
+    except ValueError:
+        return []
+    return [m for m in data if isinstance(m, dict)] if isinstance(data, list) else []
+
+
+def _verify_visible(list_fn: StrRunner | None, d: Decision) -> bool:
+    """Verify the newly stored memory is visible in the wiki topic.
+
+    Only entries with topic == WIKI_TOPIC are considered. For bump ops only
+    the target_id is checked (no jaccard fallback — wrong-ID entries with
+    similar content must not be accepted).
+    """
+    try:
+        entries = list_topic(WIKI_TOPIC, list_fn)
+        for m in entries:
+            if m.get("topic") != WIKI_TOPIC:
+                continue
+            if d.op == "bump":
+                if str(m.get("id", "")) == d.target_id:
+                    return True
+                continue
+            s1 = _tokens(d.content)
+            s2 = _tokens(str(m.get("summary", "") or ""))
+            if s1 and s2 and _jaccard(s1, s2) >= _DUP:
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _verify_forget_drained(pending_id: str, list_fn: StrRunner | None) -> bool:
+    """Verify the pending id is no longer in the pending list.
+
+    Fail-closed: returns False when ICM is unreachable or returns
+    unparseable output — an empty list from a healthy ICM is the
+    only path to ``True``.
+    """
+    icm = _icm_exe()
+    cmd = [icm, "list", "-t", PENDING_TOPIC, "--format", "json",
+           "--no-embeddings", "--read-only"]
+    try:
+        raw = (list_fn or _run_out)(cmd)
+    except Exception:
+        return False
+    if not raw or not raw.strip():
+        return False
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return False
+    if not isinstance(data, list):
+        return False
+    return not any(str(m.get("id", "")) == pending_id
+                   for m in data if isinstance(m, dict))
+
+
+def _apply(d: Decision, store: RcRunner, update: RcRunner, forget: RcRunner,
+           list_fn: StrRunner | None = None) -> bool:
     icm = _icm_exe()
     kw = ",".join(d.keywords)
     if d.op == "add":
@@ -219,11 +429,38 @@ def _apply(d: Decision, store: RcRunner, update: RcRunner, forget: RcRunner) -> 
     elif d.op == "bump":
         rc = update([icm, "update", d.target_id, "-c", d.content, "-i", d.importance, "-k", kw])
     else:
+        # Classified skip — drain pending entry without storing a wiki lesson.
+        forget([icm, "forget", d.pending_id])
+        drained = _verify_forget_drained(d.pending_id, list_fn)
+        d.receipt = ApplyReceipt(
+            stored=False, visible=False, forgotten=drained,
+            reason=f"skip drain {'ok' if drained else 'forget may have failed'}",
+        )
+        return drained
+
+    stored_ok = rc == 0
+    if not stored_ok:
+        d.receipt = ApplyReceipt(stored=False, reason=f"store returned {rc}")
         return False
-    if rc != 0:
+
+    # VERIFY:  store returncode == 0 is necessary but not sufficient.
+    visible = _verify_visible(list_fn, d)
+    if not visible:
+        d.receipt = ApplyReceipt(
+            stored=True, visible=False,
+            reason="store verification failed — memory not visible through read path",
+        )
         return False
-    forget([icm, "forget", d.pending_id])   # drain pending regardless of forget rc
-    return True
+
+    forget_rc = forget([icm, "forget", d.pending_id])
+    forgotten = forget_rc == 0 and _verify_forget_drained(d.pending_id, list_fn)
+    receipt = ApplyReceipt(
+        stored=True, visible=True, forgotten=forgotten,
+        reason=("ok" if forgotten else
+                f"forget returned {forget_rc} but pending item still visible in list"),
+    )
+    d.receipt = receipt
+    return forgotten
 
 
 @dataclass
@@ -284,6 +521,7 @@ def pending_preview(*, limit: int | None = None) -> str:
 def curate(
     *,
     list_runner: StrRunner | None = None,
+    verify_runner: StrRunner | None = None,
     recall_fn: RecallFn | None = None,
     store_runner: RcRunner | None = None,
     update_runner: RcRunner | None = None,
@@ -321,7 +559,7 @@ def curate(
 
     applied = 0
     if not _curate_lock_enabled():
-        applied = _apply_all(decisions, store, update, forget)
+        applied = _apply_all(decisions, store, update, forget, list_fn=verify_runner)
         return CurateResult(decisions, applied=applied, wrote=True)
 
     owner = _curate_lock_owner()
@@ -342,7 +580,7 @@ def curate(
                    "is curating; re-run `paw curate` shortly",
         )
     try:
-        applied = _apply_all(decisions, store, update, forget)
+        applied = _apply_all(decisions, store, update, forget, list_fn=verify_runner)
     finally:
         mesh.release_lock(_CURATE_SCOPE, name=_CURATE_LOCK_NAME, owner=owner)
     return CurateResult(decisions, applied=applied, wrote=True)
@@ -353,12 +591,14 @@ def _apply_all(
     store: RcRunner,
     update: RcRunner,
     forget: RcRunner,
+    *,
+    list_fn: StrRunner | None = None,
 ) -> int:
     """Apply decisions defensively; downgrade to ``skip`` on any failure."""
     applied = 0
     for d in decisions:
         try:
-            if _apply(d, store, update, forget):
+            if _apply(d, store, update, forget, list_fn=list_fn):
                 applied += 1
             else:
                 d.op = "skip"

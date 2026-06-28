@@ -57,6 +57,8 @@ class ScanExecutionTests(unittest.TestCase):
         ]
         cands = scan_transcript(entries)
         self.assertEqual(cands[0].signal, "is_error")
+        self.assertIn("command=py broken.py", cands[0].content)
+        self.assertIn("error=Traceback: boom", cands[0].content)
         self.assertIn("no in-session fix", cands[0].detail)
 
     def test_clean_transcript_no_candidates(self) -> None:
@@ -216,6 +218,7 @@ class CodexAdapterTests(unittest.TestCase):
         cands = scan_transcript(entries, host="codex")
         self.assertEqual(len(cands), 1)
         self.assertEqual(cands[0].type, "execution")
+        self.assertIn("command=pytest tests/", cands[0].content)
         self.assertIn("AssertionError", cands[0].trigger + cands[0].raw)
 
     def test_exit_zero_not_captured(self) -> None:
@@ -351,6 +354,16 @@ class StoreCmdTests(unittest.TestCase):
         self.assertIn("signal:fail-fix", kw)
         self.assertIn("session:sess-abcdef1", kw)
         self.assertIn("-r", cmd)
+
+    def test_store_cmd_summary_keeps_original_command(self) -> None:
+        c = scan_transcript([
+            asst("Bash", "a", command="py broken.py"),
+            result("a", is_error=True, content="Traceback: boom"),
+        ])[0]
+        cmd = _store_cmd(c, "")
+        summary = cmd[cmd.index("-c") + 1]
+        self.assertIn("command=py broken.py", summary)
+        self.assertIn("error=Traceback: boom", summary)
 
 
 if __name__ == "__main__":

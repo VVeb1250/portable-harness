@@ -29,6 +29,7 @@ class SurfaceAuditTests(unittest.TestCase):
         code = next(entry for entry in decision.sets if entry.name == "code-intelligence")
         self.assertEqual(code.state, "healthy")
         self.assertEqual(code.action, "use")
+        self.assertEqual(code.posture, "conditional")
         self.assertTrue(any("codegraph" in rung for rung in code.routing))
         self.assertIn("code-intelligence (live)", decision.block)
         self.assertIn("code_impact", decision.inferred_intents)
@@ -84,6 +85,21 @@ class SurfaceAuditTests(unittest.TestCase):
         self.assertEqual(summary["events"], 2)
         self.assertIn("code-intelligence", summary["sets"])
         self.assertTrue(summary["actions"])
+        self.assertIn("conditional", summary["postures"])
+        self.assertIn("default", summary["postures"])
+
+    def test_surface_decision_marks_ready_non_default_as_task_specific(self) -> None:
+        with mock.patch.object(rb, "_LINK_STATE_PROBE", lambda s, cwd: "absent"):
+            decision = build_surface_decision(
+                "package the current git diff and relevant repo context",
+                cwd=".",
+                intent="repo handoff",
+                recall_runner=lambda p: "[]",
+            )
+
+        pack = next(entry for entry in decision.sets if entry.name == "repo-pack")
+        self.assertEqual(pack.posture, "task-specific")
+        self.assertEqual(pack.action, "paw plan repo-pack (task-specific)")
 
 
 if __name__ == "__main__":

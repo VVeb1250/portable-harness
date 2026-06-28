@@ -61,7 +61,19 @@ def icm_recall(query: str, limit: int = 5, runner: Runner | None = None) -> list
         return []
     if not isinstance(data, list):
         return []
-    wiki = [m for m in data if not (isinstance(m, dict) and m.get("topic") == "pending")]
+    # Suppress memories whose recalled fix keeps failing (effectiveness overlay).
+    # Fail-closed to "no filtering" if the ledger is unreadable — a broken
+    # sidecar must never empty out a recall.
+    try:
+        from .memory.distrust import distrusted_ids
+        suppressed = distrusted_ids()
+    except Exception:
+        suppressed = set()
+    wiki = [
+        m for m in data
+        if not (isinstance(m, dict) and m.get("topic") == "pending")
+        and not (isinstance(m, dict) and suppressed and str(m.get("id", "")) in suppressed)
+    ]
     return wiki[:limit]
 
 
