@@ -132,6 +132,16 @@ no-daemon baseline.
 7. **CLI floor before hook** — `paw recall` / `paw reflect` work on any host
    (pull); push (UserPromptSubmit) + capture (Stop) hooks are enhancements on
    hook-capable hosts (CC, Codex). Other (API-call) hosts: deferred, CLI-only.
+
+   <!-- paw:decision:cli-floor-before-hook:start -->
+   The CLI is the floor; hooks are the ceiling. `paw recall` / `paw reflect` /
+   `paw curate` / `paw memory status` MUST work on every host via plain CLI
+   (pull model), because ZCode and other API-call hosts have no hook surface.
+   Hooks (UserPromptSubmit injection, Stop capture) are ENHANCEMENTS on hook-
+   capable hosts only — never a dependency. Do not move load-bearing memory
+   logic into a hook such that a non-hook host loses the capability. When in
+   doubt, ship the CLI command first and the hook wiring second.
+   <!-- paw:decision:cli-floor-before-hook:end -->
 8. **Memoir later, not now** — Memoirs are for curated stable concepts and graph
    visualization after the ordinary pending→wiki flow is trustworthy. Do not
    use Memoir as a pending drain or automatic transcript distiller.
