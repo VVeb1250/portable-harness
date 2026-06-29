@@ -150,5 +150,79 @@ class ResolveApplyRemoveTests(unittest.TestCase):
         self.assertEqual(target.read_text(encoding="utf-8"), before)
 
 
+class MultiTargetTests(unittest.TestCase):
+    """apply/verify/remove touch BOTH AGENTS.md and CLAUDE.md when both exist."""
+
+    def _setup_both(self, agents_block=False, claude_block=False) -> Path:
+        d = tempfile.mkdtemp()
+        cwd = Path(d)
+        a = "# AGENTS\n"
+        c = "# CLAUDE\n"
+        if agents_block:
+            a = sync.inject_block(a)
+        if claude_block:
+            c = sync.inject_block(c)
+        (cwd / "AGENTS.md").write_text(a, encoding="utf-8")
+        (cwd / "CLAUDE.md").write_text(c, encoding="utf-8")
+        return cwd
+
+    def test_resolve_targets_returns_both(self) -> None:
+        cwd = self._setup_both()
+        targets = sync.resolve_targets(cwd=str(cwd))
+        self.assertEqual([t.name for t in targets], ["AGENTS.md", "CLAUDE.md"])
+
+    def test_apply_injects_into_both(self) -> None:
+        cwd = self._setup_both()
+        result = sync.apply(cwd=str(cwd))
+        self.assertTrue(result.applied)
+        self.assertTrue(result.changed)
+        agents = (cwd / "AGENTS.md").read_text(encoding="utf-8")
+        claude = (cwd / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertTrue(sync.has_block(agents))
+        self.assertTrue(sync.has_block(claude))
+        # summary mentions both files
+        self.assertIn("AGENTS.md", result.message)
+        self.assertIn("CLAUDE.md", result.message)
+
+    def test_apply_idempotent_when_both_present(self) -> None:
+        cwd = self._setup_both(agents_block=True, claude_block=True)
+        result = sync.apply(cwd=str(cwd))
+        self.assertTrue(result.applied)   # present in all
+        self.assertFalse(result.changed)  # no change
+
+    def test_apply_partial_fills_missing(self) -> None:
+        # block in AGENTS only → apply adds to CLAUDE, reports changed
+        cwd = self._setup_both(agents_block=True, claude_block=False)
+        result = sync.apply(cwd=str(cwd))
+        self.assertTrue(result.applied)   # now in both
+        self.assertTrue(result.changed)   # CLAUDE was modified
+
+    def test_verify_present_in_both(self) -> None:
+        cwd = self._setup_both(agents_block=True, claude_block=True)
+        result = sync.verify(cwd=str(cwd))
+        self.assertTrue(result.applied)
+
+    def test_verify_absent_in_one_reports_false(self) -> None:
+        cwd = self._setup_both(agents_block=True, claude_block=False)
+        result = sync.verify(cwd=str(cwd))
+        self.assertFalse(result.applied)  # not in ALL
+
+    def test_remove_strips_from_both(self) -> None:
+        cwd = self._setup_both(agents_block=True, claude_block=True)
+        result = sync.remove(cwd=str(cwd))
+        self.assertTrue(result.changed)
+        agents = (cwd / "AGENTS.md").read_text(encoding="utf-8")
+        claude = (cwd / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertFalse(sync.has_block(agents))
+        self.assertFalse(sync.has_block(claude))
+
+    def test_remove_partial_reports_changed(self) -> None:
+        # block in AGENTS only → remove strips it, CLAUDE no-op, changed=True
+        cwd = self._setup_both(agents_block=True, claude_block=False)
+        result = sync.remove(cwd=str(cwd))
+        self.assertTrue(result.changed)
+        self.assertFalse(sync.has_block((cwd / "AGENTS.md").read_text(encoding="utf-8")))
+
+
 if __name__ == "__main__":
     unittest.main()

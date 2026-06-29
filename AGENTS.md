@@ -164,3 +164,16 @@ Local-first semantic memory and cross-agent recall through ICM. Keeps durable pr
   - usage: `icm.exe recall "what did we decide about bundle init" --read-only   |   icm.exe store -t decisions -c "summary" -i high -k "bundle"`
   - install: `Follow ICM installer or existing machine install; verify with icm.exe --version`
 <!-- paw:local-memory:end -->
+
+<!-- paw:status-sync:start -->
+## paw status-sync (อัพเดท snapshot)
+
+เมื่อจบงานสำคัญ หรือก่อนปิด session ให้อัพเดท snapshot ของโปรเจค
+เพื่อให้ session ถัดไปเห็นสถานะล่าสุดผ่าน paw resume block:
+
+1. `paw memory status save` — เก็บ git layer อัตโนมัติ (branch/commit/dirty)
+2. `paw memory status note "<ทำอะไร>/<เจออะไร>/<จะทำอะไรต่อ>"`
+
+snapshot จะถูก inject กลับเป็น resume block ตอน SessionStart.
+ห้ามลบ block นี้ด้วยมือ — ใช้ `paw memory status-sync remove`.
+<!-- paw:status-sync:end -->

@@ -84,30 +84,34 @@ class SyncResult:
     message: str
 
 
-# Default host-context files, searched in order. First existing writable file
-# is used as the target. Matches the linker's notion of host context files.
+# Default host-context files. ALL existing ones are targets — a project with
+# both AGENTS.md and CLAUDE.md gets the block in each, so every host's agent
+# reads the same instruction regardless of which file it loads.
 DEFAULT_TARGETS = ("AGENTS.md", "CLAUDE.md")
 
 
 def resolve_target(*, cwd: str | None = None) -> Path | None:
-    """Pick the first existing DEFAULT_TARGET under cwd (or cwd itself)."""
+    """Pick the FIRST existing DEFAULT_TARGET under cwd.
+
+    Kept for backwards compatibility (older callers, tests). New code should
+    prefer ``resolve_targets`` so the block lands in every context file.
+    """
+    targets = resolve_targets(cwd=cwd)
+    return targets[0] if targets else None
+
+
+def resolve_targets(*, cwd: str | None = None) -> list[Path]:
+    """All existing DEFAULT_TARGET files under cwd, in declared order."""
     base = Path(cwd) if cwd else Path.cwd()
+    out: list[Path] = []
     for name in DEFAULT_TARGETS:
         candidate = base / name
         if candidate.exists() and candidate.is_file():
-            return candidate
-    return None
+            out.append(candidate)
+    return out
 
 
-def apply(cwd: str | None = None, name: str = SET_NAME) -> SyncResult:
-    """Inject the status-sync block into the host context file. Idempotent."""
-    target = resolve_target(cwd=cwd)
-    if target is None:
-        return SyncResult(
-            applied=False, changed=False,
-            path=Path(cwd or ".") / DEFAULT_TARGETS[0],
-            message=f"no host context file found ({'/'.join(DEFAULT_TARGETS)})",
-        )
+def _apply_one(target: Path, name: str) -> SyncResult:
     before = target.read_text(encoding="utf-8")
     if has_block(before, name):
         return SyncResult(
@@ -121,15 +125,7 @@ def apply(cwd: str | None = None, name: str = SET_NAME) -> SyncResult:
     )
 
 
-def remove(cwd: str | None = None, name: str = SET_NAME) -> SyncResult:
-    """Strip the status-sync block. Idempotent."""
-    target = resolve_target(cwd=cwd)
-    if target is None:
-        return SyncResult(
-            applied=False, changed=False,
-            path=Path(cwd or ".") / DEFAULT_TARGETS[0],
-            message="no host context file found",
-        )
+def _remove_one(target: Path, name: str) -> SyncResult:
     before = target.read_text(encoding="utf-8")
     if not has_block(before, name):
         return SyncResult(
@@ -143,17 +139,70 @@ def remove(cwd: str | None = None, name: str = SET_NAME) -> SyncResult:
     )
 
 
-def verify(cwd: str | None = None, name: str = SET_NAME) -> SyncResult:
-    """Report whether the block is present. Never modifies the file."""
-    target = resolve_target(cwd=cwd)
-    if target is None:
+def _verify_one(target: Path, name: str) -> SyncResult:
+    present = has_block(target.read_text(encoding="utf-8"), name)
+    return SyncResult(
+        applied=present, changed=False, path=target,
+        message=f"{'present' if present else 'absent'} in {target.name}",
+    )
+
+
+def apply(cwd: str | None = None, name: str = SET_NAME) -> SyncResult:
+    """Inject the status-sync block into EVERY host context file. Idempotent.
+
+    Returns an aggregate SyncResult: ``applied`` is True if the block is now
+    present in all targets; ``changed`` is True if at least one file was
+    modified; ``path`` is the first target; ``message`` summarises per-file.
+    """
+    targets = resolve_targets(cwd=cwd)
+    if not targets:
+        return SyncResult(
+            applied=False, changed=False,
+            path=Path(cwd or ".") / DEFAULT_TARGETS[0],
+            message=f"no host context file found ({'/'.join(DEFAULT_TARGETS)})",
+        )
+    results = [_apply_one(t, name) for t in targets]
+    changed = any(r.changed for r in results)
+    all_present = all(r.applied for r in results)
+    summary = "; ".join(r.message for r in results)
+    return SyncResult(
+        applied=all_present, changed=changed, path=targets[0], message=summary,
+    )
+
+
+def remove(cwd: str | None = None, name: str = SET_NAME) -> SyncResult:
+    """Strip the status-sync block from EVERY host context file. Idempotent."""
+    targets = resolve_targets(cwd=cwd)
+    if not targets:
         return SyncResult(
             applied=False, changed=False,
             path=Path(cwd or ".") / DEFAULT_TARGETS[0],
             message="no host context file found",
         )
-    present = has_block(target.read_text(encoding="utf-8"), name)
+    results = [_remove_one(t, name) for t in targets]
+    changed = any(r.changed for r in results)
+    all_absent = all(not r.applied for r in results)
+    summary = "; ".join(r.message for r in results)
     return SyncResult(
-        applied=present, changed=False, path=target,
-        message=f"{'present' if present else 'absent'} in {target.name}",
+        applied=not all_absent, changed=changed, path=targets[0], message=summary,
+    )
+
+
+def verify(cwd: str | None = None, name: str = SET_NAME) -> SyncResult:
+    """Report whether the block is present in EVERY host context file.
+
+    ``applied`` is True only when present in ALL targets. Never modifies files.
+    """
+    targets = resolve_targets(cwd=cwd)
+    if not targets:
+        return SyncResult(
+            applied=False, changed=False,
+            path=Path(cwd or ".") / DEFAULT_TARGETS[0],
+            message="no host context file found",
+        )
+    results = [_verify_one(t, name) for t in targets]
+    all_present = all(r.applied for r in results)
+    summary = "; ".join(r.message for r in results)
+    return SyncResult(
+        applied=all_present, changed=False, path=targets[0], message=summary,
     )
