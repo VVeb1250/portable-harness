@@ -61,6 +61,56 @@ def _tokens(text: str) -> set[str]:
     return set(_WORD.findall(_norm(text)))
 
 
+# Tag patterns stored in ICM memory keywords. Mirrors curate._conf_of and
+# reflection's type tag, kept local so router_block does not import the whole
+# curate pipeline just to parse a keyword.
+_CONF_TAG = re.compile(r"^conf:([0-9]*\.?[0-9]+)$")
+_TYPE_TAG = re.compile(r"^type:([A-Za-z0-9_-]+)$")
+
+
+def _kw_list(memory: dict) -> list[str]:
+    """Normalize a memory's keywords field to a list, whether string or list."""
+    kws = memory.get("keywords")
+    if isinstance(kws, str):
+        return [k.strip() for k in kws.split(",") if k.strip()]
+    if isinstance(kws, list):
+        return [str(k) for k in kws]
+    return []
+
+
+def _memory_to_voice(memory: dict):
+    """Map an ICM memory dict to a voice.Memory (kind + confidence + summary).
+
+    Kind is inferred from the ``type:`` keyword tag (mistake subtypes all
+    classify as 'mistake'); entries without a type tag default to 'mistake'
+    since this path only handles lessons (not decisions/status, which have
+    their own delivery paths). Confidence comes from the ``conf:`` tag.
+    """
+    from .memory.voice import Memory as VoiceMemory
+
+    kind = "mistake"  # default: _relevant_lessons only surfaces mistake lessons
+    confidence = None
+    for k in _kw_list(memory):
+        tm = _TYPE_TAG.fullmatch(k)
+        if tm:
+            # All mistake subtypes (execution, silent-bug, misalignment) are
+            # 'mistake' for voice purposes — the classifier does not care about
+            # the subtype, only the confidence.
+            sub = tm.group(1).lower()
+            if sub in {"execution", "silent-bug", "misalignment"}:
+                kind = "mistake"
+            else:
+                kind = sub  # unknown subtype → let classifier treat as unknown
+        cm = _CONF_TAG.fullmatch(k)
+        if cm:
+            try:
+                confidence = float(cm.group(1))
+            except ValueError:
+                pass
+    summary = str(memory.get("summary", "")).strip()
+    return VoiceMemory(kind=kind, confidence=confidence, summary=summary)
+
+
 def _phrase_matches(trigger: str, prompt_norm: str, toks: set[str]) -> bool:
     """Match triggers as words/phrases, never as substrings inside code words.
 
@@ -449,27 +499,54 @@ def paw_block(
             parts.append("\n".join(lines))
 
         lessons = _relevant_lessons(prompt, recall_runner or _default_recall)
-        # Session inject dedup: a lesson already injected this session (within
-        # the ttl) doesn't re-surface — pure context rot otherwise. Pull-path
-        # `paw recall` is on-demand and skips this. Fail-closed to no dedup.
-        if session_id and lessons:
+        # Voice-aware injection: classify each lesson by (kind, confidence) →
+        # SHOUT / WARN / NUDGE / SILENT. SHOUTs bypass sessionlog dedup (a
+        # near-certain mistake must be heard every relevant prompt); other
+        # voices respect dedup. SILENT lessons are stored but not shown.
+        from .memory.voice import Memory as VoiceMemory
+        from .memory.voice import Voice, bypasses_dedup, classify, render
+
+        voiced = []
+        for m in lessons:
+            mem = _memory_to_voice(m)
+            voice = classify(mem)
+            if voice is Voice.SILENT:
+                continue
+            voiced.append((m, mem, voice))
+
+        if session_id and voiced:
             try:
                 from .memory import sessionlog
+                from .memory.voice import Voice
                 already = sessionlog.seen(session_id)
                 if already:
-                    lessons = [m for m in lessons
-                               if str(m.get("id", "")) not in already]
-                if lessons:
-                    sessionlog.mark(session_id, [str(m.get("id", "")) for m in lessons])
+                    kept = []
+                    for m, mem, voice in voiced:
+                        mid = str(m.get("id", ""))
+                        # SHOUT bypasses dedup; everything else dedups.
+                        if bypasses_dedup(voice) or mid not in already:
+                            kept.append((m, mem, voice))
+                    voiced = kept
+                if voiced:
+                    sessionlog.mark(
+                        session_id,
+                        [str(m.get("id", "")) for m, _, v in voiced if not bypasses_dedup(v)],
+                    )
             except Exception:
-                pass  # dedup unavailable — inject the lesson anyway
-        if lessons:
-            lines = ["🧠 paw memory (high-signal lessons):"]
-            for m in lessons:
-                imp = m.get("importance", "high")
-                summary = str(m.get("summary", "")).strip().replace("\n", " ")[:130]
-                lines.append(f"• [{imp}] {summary}")
-            parts.append("\n".join(lines))
+                pass  # dedup unavailable — inject the lessons anyway
+
+        if voiced:
+            # Order by loudness so a SHOUT leads the block and the agent sees
+            # it first. SILENT already filtered out above.
+            order = {"shout": 0, "warn": 1, "nudge": 2, "resume": 3, "silent": 9}
+            voiced.sort(key=lambda t: order.get(t[2].value, 5))
+            lines = ["🧠 paw memory (lessons, by urgency):"]
+            for m, mem, voice in voiced:
+                rendered = render(voice, mem.summary)
+                if rendered:
+                    lines.append(rendered)
+            if len(lines) > 1:  # header + at least one body line
+                parts.append("\n".join(lines))
 
         return "\n".join(parts)
     except Exception:

@@ -125,14 +125,40 @@ class RecallResult:
             for m in self.icm:
                 imp = m.get("importance", "?")
                 topic = m.get("topic", "?")
+                conf = _confidence_of(m)
                 summary = str(m.get("summary", "")).strip().replace("\n", " ")[:140]
-                out.append(f"  • [{imp}·{topic}] {summary}")
+                tag = f"[{imp}·{topic}·conf{conf}]" if conf is not None else f"[{imp}·{topic}]"
+                out.append(f"  • {tag} {summary}")
         if self.committed:
             name = HOST_CONTEXT.get(self.host, "context")
             out.append(f"committed ({name}):")
             for ln, text in self.committed:
                 out.append(f"  • L{ln}: {text}")
         return "\n".join(out)
+
+
+_CONF_TAG_RE = re.compile(r"^conf:([0-9]*\.?[0-9]+)$")
+
+
+def _confidence_of(memory: dict) -> float | None:
+    """Extract the stored confidence tag from a memory dict's keywords.
+
+    Returns None for legacy entries (pre-confidence) so callers can default
+    sensibly. Mirrors curate._conf_of but operates on the recall memory shape.
+    """
+    kws = memory.get("keywords")
+    if isinstance(kws, str):
+        kws = [k.strip() for k in kws.split(",") if k.strip()]
+    if not isinstance(kws, list):
+        return None
+    for k in kws:
+        m = _CONF_TAG_RE.fullmatch(str(k))
+        if m:
+            try:
+                return float(m.group(1))
+            except ValueError:
+                return None
+    return None
 
 
 def recall(

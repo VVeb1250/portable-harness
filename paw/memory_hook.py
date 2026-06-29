@@ -24,6 +24,7 @@ from typing import Callable, Literal
 
 from .curate import PENDING_CRITICAL, PENDING_WARN, pending_count, pending_preview
 from .memory_mesh import MemoryMesh, MeshEvent, MeshLock, MeshScope
+from .memory.resume import build_resume_block
 
 HookEvent = Literal["session-start", "user-prompt", "stop"]
 
@@ -46,6 +47,7 @@ class MemoryHookConfig:
     member: str
     role: str
     session_id: str
+    cwd: str = ""
     state_dir: Path | None = None
     hook_state_dir: Path | None = None
 
@@ -135,6 +137,7 @@ def build_config(
         member=resolved_member,
         role=resolved_role,
         session_id=session_id,
+        cwd=cwd,
         state_dir=state_dir,
         hook_state_dir=hook_state_dir,
     )
@@ -183,11 +186,21 @@ def run_memory_hook(
             locks=_interesting_locks(poll.locks, config.member),
             cursor=poll.cursor,
         )
-        context = "\n".join(part for part in (context, hygiene) if part)
+        # SessionStart only: the resume block orients a fresh session to the
+        # project's status / decisions / latest handoff. Built fail-safe —
+        # any error or empty layer collapses to "", never breaking the hook.
+        resume_block = ""
+        if config.event == "session-start":
+            try:
+                builder = _resume_builder or _resume_block_for
+                resume_block = builder(config)
+            except Exception:
+                resume_block = ""
+        parts = [p for p in (resume_block, context, hygiene) if p]
         return MemoryHookResult(
             status="success",
             summary=f"memory hook {config.event} cursor {poll.cursor}",
-            additional_context=context,
+            additional_context="\n".join(parts),
             cursor=poll.cursor,
         )
 
@@ -195,11 +208,67 @@ def run_memory_hook(
     _save_state(config, hook_state)
     # Stop: nothing new from the mesh to surface, but a pending-overflow nudge
     # is still useful on session end so the agent logs the curation todo.
+    # Also refresh the git layer of the status snapshot — deterministic ground
+    # truth that costs nothing and means the next SessionStart's resume block
+    # shows the current commit. The AI note layer is NOT touched here; the
+    # status-sync managed block instructs the AI to update it explicitly.
+    if config.event == "stop":
+        try:
+            from .memory.status_store import capture_git_layer, save_git_layer
+            git = capture_git_layer(config.cwd or os.getcwd())
+            if git.present:
+                save_git_layer(config.project, git)
+        except Exception:
+            # The snapshot is a nicety, never load-bearing for the Stop hook.
+            pass
     return MemoryHookResult(
         status="success",
         summary=f"memory hook {config.event} heartbeat recorded",
         additional_context=hygiene,
         cursor=since,
+    )
+
+
+# Seam for tests: replace this function to isolate the hook from the live
+# resume builder (which touches real ICM + git). Production leaves it as-is.
+_resume_builder = None
+
+
+def _resume_block_for(config: MemoryHookConfig) -> str:
+    """Build the SessionStart resume block for this project/run.
+
+    Fail-safe by construction (the builder swallows per-layer errors), and this
+    wrapper adds one more net: any unexpected error returns "" so the hook
+    never breaks. Markdown sources are resolved relative to the session cwd so
+    the decisions mirror sees CLAUDE.md/AGENTS.md of the actual project.
+    """
+    from pathlib import Path
+
+    from .blackboard import BlackboardScope, IcmBlackboard
+    from .memory.decision_mirror import DEFAULT_MD_SOURCES
+
+    cwd = config.cwd or os.getcwd()
+    base = Path(cwd) if cwd else None
+    md_paths = [Path(name) for name in DEFAULT_MD_SOURCES]
+
+    def _handoff_reader(project: str, workdir: str) -> str:
+        # Latest handoff entry for this run. Bounded + read-only.
+        try:
+            scope = BlackboardScope(project=project, run_id=config.run_id)
+            board = IcmBlackboard()
+            result = board.read(scope, kind="handoff", limit=1)
+            if getattr(result, "entries", None):
+                return result.entries[0].content
+        except Exception:
+            return ""
+        return ""
+
+    return build_resume_block(
+        config.project,
+        cwd=cwd,
+        md_paths=md_paths,
+        md_base=base,
+        handoff_reader=_handoff_reader,
     )
 
 

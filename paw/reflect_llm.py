@@ -120,5 +120,10 @@ def silent_bug_candidates(
             detail="",
             raw=(f"$ {_cmd_of(ev)}\n{str(ev.get('text',''))}" if ev else summary)[:600],
             terms=_terms(summary + " " + _cmd_of(ev)),
+            # LLM-inferred silent bug: more signal than a heuristic miss (it
+            # confirmed a real exit-0 failure), but still inferred, not
+            # deterministic. Mid confidence — must prove itself via recurrence
+            # before it earns a SHOUT voice.
+            confidence=0.45,
         ))
     return out

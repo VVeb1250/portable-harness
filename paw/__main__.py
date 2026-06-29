@@ -351,6 +351,153 @@ def _memory_mesh(args: argparse.Namespace) -> int:
                 print(f"{result.summary} ({result.path})")
         return 0 if all(result.status == "success" for result in results) else 1
 
+    if args.memory_action == "status":
+        from .memory import status_store as status_store_mod
+
+        project = args.project or Path.cwd().name
+        if args.status_action == "show":
+            snapshot = status_store_mod.read_status(project)
+            if args.json:
+                payload = snapshot.to_dict() if snapshot else {"project": project, "git": None, "note": None}
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            else:
+                rendered = status_store_mod.render_resume(snapshot)
+                print(rendered if rendered else f"(no snapshot for {project})")
+            return 0
+        if args.status_action == "save":
+            cwd = args.cwd or str(Path.cwd())
+            git = status_store_mod.capture_git_layer(cwd)
+            ok = status_store_mod.save_git_layer(project, git)
+            if args.json:
+                print(json.dumps({"project": project, "saved": ok, "git": git.__dict__}, ensure_ascii=False, indent=2))
+            else:
+                print(f"status save: {'ok' if ok else 'FAILED'} · {git.branch} · {git.head_short} · dirty {git.dirty_count}")
+            return 0 if ok else 1
+        if args.status_action == "note":
+            updated_by = args.by or "paw:cli"
+            cwd = str(Path.cwd())
+            git = status_store_mod.capture_git_layer(cwd)
+            ok = status_store_mod.save_note(project, args.summary, updated_by=updated_by, base_head=git.head_short)
+            if args.json:
+                print(json.dumps({"project": project, "saved": ok, "base_head": git.head_short}, ensure_ascii=False, indent=2))
+            else:
+                print(f"status note: {'ok' if ok else 'FAILED'} (base {git.head_short})")
+            return 0 if ok else 1
+        if args.status_action == "reset":
+            ok = status_store_mod.reset_status(project)
+            if args.json:
+                print(json.dumps({"project": project, "reset": ok}, ensure_ascii=False, indent=2))
+            else:
+                print(f"status reset: {'ok' if ok else 'nothing to remove'}")
+            return 0
+
+    if args.memory_action == "status-sync":
+        from .memory import status_sync as sync_mod
+
+        cwd = args.cwd
+        if args.status_sync_action == "apply":
+            result = sync_mod.apply(cwd=cwd)
+        elif args.status_sync_action == "remove":
+            result = sync_mod.remove(cwd=cwd)
+        else:
+            result = sync_mod.verify(cwd=cwd)
+        if args.json:
+            print(json.dumps(result.__dict__, ensure_ascii=False, indent=2))
+        else:
+            print(f"status-sync {args.status_sync_action}: {result.message}")
+        return 0
+
+    if args.memory_action == "distrust":
+        from .memory import distrust as distrust_mod
+        if args.distrust_action == "list":
+            data = distrust_mod.load()
+            if args.json:
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+            elif not data:
+                print("(no distrust records)")
+            else:
+                for mid, miss in sorted(data.items()):
+                    print(f"{mid}\tmiss={miss}")
+            return 0
+        if args.distrust_action == "forget":
+            removed = distrust_mod.forget(args.mem_id)
+            msg = f"forgot {args.mem_id}" if removed else f"{args.mem_id} not present"
+            if args.json:
+                print(json.dumps({"mem_id": args.mem_id, "forgot": removed}, ensure_ascii=False))
+            else:
+                print(f"distrust forget: {msg}")
+            return 0
+        if args.distrust_action == "record":
+            # Manual miss recording per the plan: until transcript-watermark capture
+            # is honest, the agent records a miss explicitly when a recalled fix
+            # recurs. This closes the governance loop manually.
+            distrust_mod.record_miss(args.mem_id)
+            data = distrust_mod.load()
+            miss = data.get(args.mem_id, 0)
+            if args.json:
+                print(json.dumps({"mem_id": args.mem_id, "miss": miss}, ensure_ascii=False))
+            else:
+                print(f"distrust record: {args.mem_id} miss={miss}")
+            return 0
+
+    if args.memory_action == "outcomes":
+        from .memory import outcomes as outcomes_mod
+        if args.outcomes_action == "list":
+            data = outcomes_mod.load()
+            if args.json:
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+            elif not data:
+                print("(no outcome records)")
+            else:
+                for name, rec in sorted(data.items()):
+                    s = rec.get("suggested", 0)
+                    u = rec.get("used", 0)
+                    print(f"{name}\tsuggested={s}\tused={u}")
+            return 0
+        if args.outcomes_action == "forget":
+            removed = outcomes_mod.forget(args.set_name)
+            msg = f"forgot {args.set_name}" if removed else f"{args.set_name} not present"
+            if args.json:
+                print(json.dumps({"set": args.set_name, "forgot": removed}, ensure_ascii=False))
+            else:
+                print(f"outcomes forget: {msg}")
+            return 0
+
+    if args.memory_action == "session-reset":
+        from .memory import sessionlog
+        sessionlog.reset(args.session_id)
+        if args.json:
+            print(json.dumps({"session_id": args.session_id, "reset": True}, ensure_ascii=False))
+        else:
+            print(f"session-reset: cleared dedup for {args.session_id}")
+        return 0
+
+    if args.memory_action == "facts":
+        from .memory import facts as facts_mod
+        if args.facts_action == "get":
+            row = facts_mod.get_fact(args.entity, args.key)
+            if row is None:
+                if args.json:
+                    print(json.dumps({"entity": args.entity, "key": args.key, "value": None}))
+                else:
+                    print(f"(no fact {args.entity}.{args.key})")
+                return 0
+            if args.json:
+                print(json.dumps(row.__dict__, ensure_ascii=False, indent=2))
+            else:
+                print(f"{args.entity}.{args.key} = {row.value}")
+            return 0
+        if args.facts_action == "list":
+            rows = facts_mod.list_facts(args.entity)
+            if args.json:
+                print(json.dumps([r.__dict__ for r in rows], ensure_ascii=False, indent=2))
+            elif not rows:
+                print(f"(no facts under {args.entity})")
+            else:
+                for r in rows:
+                    print(f"{r.key}\t{r.value}")
+            return 0
+
     if args.memory_action == "hook":
         raw = sys.stdin.buffer.read().decode("utf-8", "ignore") if not sys.stdin.isatty() else ""
         payload = load_hook_payload(raw)
@@ -1092,6 +1239,92 @@ def main(argv: list[str] | None = None) -> int:
         help="override one host config path; only valid when --host is not all",
     )
     install_hooks.add_argument("--json", action="store_true")
+
+    # ---- status snapshot (two-layer resume anchor) ----
+    status = memory_sub.add_parser(
+        "status",
+        help="project status snapshot (git layer + AI note) for SessionStart resume",
+    )
+    status_sub = status.add_subparsers(dest="status_action", required=True)
+    status_show = status_sub.add_parser("show", help="print the current snapshot")
+    status_show.add_argument("--project", default=None)
+    status_show.add_argument("--json", action="store_true")
+    status_save = status_sub.add_parser(
+        "save", help="capture git layer (deterministic; run on Stop or before close)"
+    )
+    status_save.add_argument("--project", default=None)
+    status_save.add_argument("--cwd", default=None)
+    status_save.add_argument("--json", action="store_true")
+    status_note = status_sub.add_parser(
+        "note", help="write the AI note layer (did X / hit Y / next Z)"
+    )
+    status_note.add_argument("summary")
+    status_note.add_argument("--project", default=None)
+    status_note.add_argument("--by", default=None, help="member/host that wrote the note")
+    status_note.add_argument("--json", action="store_true")
+    status_reset = status_sub.add_parser("reset", help="delete the status slot")
+    status_reset.add_argument("--project", default=None)
+    status_reset.add_argument("--json", action="store_true")
+
+    # ---- status-sync managed block (the โพย) ----
+    status_sync = memory_sub.add_parser(
+        "status-sync",
+        help="manage the status-sync instruction block in AGENTS.md/CLAUDE.md",
+    )
+    status_sync_sub = status_sync.add_subparsers(
+        dest="status_sync_action", required=True
+    )
+    for verb in ("apply", "remove", "verify"):
+        sp = status_sync_sub.add_parser(verb)
+        sp.add_argument("--cwd", default=None)
+        sp.add_argument("--json", action="store_true")
+
+    # ---- governance overlays (inspect / reset / record-miss) ----
+    distrust = memory_sub.add_parser(
+        "distrust",
+        help="inspect/reset the memory distrust overlay (recalled-but-recurring)",
+    )
+    distrust_sub = distrust.add_subparsers(dest="distrust_action", required=True)
+    distrust_sub.add_parser("list", help="show mem_id → miss_count")
+    distrust_forget = distrust_sub.add_parser("forget", help="re-trust one mem_id")
+    distrust_forget.add_argument("mem_id")
+    distrust_record = distrust_sub.add_parser(
+        "record", help="record a miss on a mem_id (manual governance, per plan)"
+    )
+    distrust_record.add_argument("mem_id")
+    for sp in distrust_sub.choices.values():
+        sp.add_argument("--json", action="store_true")
+
+    outcomes = memory_sub.add_parser(
+        "outcomes",
+        help="inspect/reset the set-adoption outcome overlay",
+    )
+    outcomes_sub = outcomes.add_subparsers(dest="outcomes_action", required=True)
+    outcomes_sub.add_parser("list", help="show set → suggested/used counts")
+    outcomes_forget = outcomes_sub.add_parser("forget", help="reset one set's record")
+    outcomes_forget.add_argument("set_name")
+    for sp in outcomes_sub.choices.values():
+        sp.add_argument("--json", action="store_true")
+
+    session_reset = memory_sub.add_parser(
+        "session-reset",
+        help="clear the once-per-session inject dedup for one session",
+    )
+    session_reset.add_argument("session_id")
+    session_reset.add_argument("--json", action="store_true")
+
+    facts_cmd = memory_sub.add_parser(
+        "facts",
+        help="read ICM structured facts (status/decision index) directly",
+    )
+    facts_sub = facts_cmd.add_subparsers(dest="facts_action", required=True)
+    facts_get = facts_sub.add_parser("get", help="read entity.key value")
+    facts_get.add_argument("entity")
+    facts_get.add_argument("key")
+    facts_list = facts_sub.add_parser("list", help="list keys under an entity")
+    facts_list.add_argument("entity")
+    for sp in facts_sub.choices.values():
+        sp.add_argument("--json", action="store_true")
 
     team = sub.add_parser(
         "team",

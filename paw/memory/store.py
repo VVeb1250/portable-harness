@@ -60,6 +60,25 @@ def _write_jsonl_raw(path: Path, lines: list[str]) -> None:
         tmp.unlink(missing_ok=True)  # leftover only when replace failed
 
 
+def write_text_atomic(path: Path, body: str) -> None:
+    """Atomic write of a single text blob (json, markdown, etc.).
+
+    Same pid-suffixed tmp + replace-retry as the jsonl writer, so a crash mid-
+    write never leaves a truncated file. Use this anywhere a non-jsonl single
+    file is written under the memory overlay (e.g. sessionlog dedup json).
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise MemoryStoreError(f"cannot create store dir {path.parent}: {e}") from e
+    tmp = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
+    tmp.write_text(body, encoding="utf-8")
+    try:
+        _replace_with_retry(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 @contextmanager
 def locked(path: Path, *, timeout: float = 2.0, stale: float = 10.0) -> Iterator[None]:
     """Best-effort cross-process lock for a read-modify-write on `path`.

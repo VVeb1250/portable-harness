@@ -115,15 +115,49 @@ def _seen_of(keywords) -> int:
     return 1
 
 
+_CONF_RE = re.compile(r"^conf:([0-9]*\.?[0-9]+)$")
+
+
+def _conf_of(keywords) -> float | None:
+    """Parse the stored confidence tag. None if absent (legacy entry)."""
+    for k in keywords or []:
+        m = _CONF_RE.fullmatch(str(k))
+        if m:
+            try:
+                return float(m.group(1))
+            except ValueError:
+                return None
+    return None
+
+
 def _escalate(seen: int, current: str) -> str:
     """Recurrence raises importance, never lowers an already-higher one."""
     target = "critical" if seen >= 3 else "high" if seen >= 2 else "medium"
     return _RANK_INV[max(_RANK.get(target, 1), _RANK.get(current, 1))]
 
 
+def _bump_confidence(keywords, seen: int) -> float:
+    """Recurrence nudges confidence up, capped at 1.0.
+
+    Each repeat sighting (seen≥2) adds 0.1 — a lesson seen 3+ times has earned
+    real trust even if its initial signal was weak (e.g. silent-bug). Legacy
+    entries without a stored conf default to 0.5 and still get bumped.
+    """
+    base = _conf_of(keywords)
+    if base is None:
+        base = 0.5
+    bump = 0.1 * max(0, seen - 1)
+    return min(1.0, round(base + bump, 2))
+
+
 def _bump_keywords(keywords, seen: int) -> list[str]:
-    out = [str(k) for k in (keywords or []) if not re.fullmatch(r"seen:\d+", str(k))]
+    # Strip both seen:N and conf:X so we re-emit fresh, single copies of each.
+    out = [
+        str(k) for k in (keywords or [])
+        if not re.fullmatch(r"seen:\d+", str(k)) and not _CONF_RE.fullmatch(str(k))
+    ]
     out.append(f"seen:{seen}")
+    out.append(f"conf:{_bump_confidence(keywords, seen):.2f}")
     return out
 
 

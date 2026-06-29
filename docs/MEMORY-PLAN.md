@@ -104,6 +104,13 @@ no-daemon baseline.
 
 1. **ICM = the only true cross-host store** — semantic wiki + `pending` topic
    (never recalled into wiki) + blackboard coordination/continuity.
+
+   <!-- paw:decision:icm-only-store:start -->
+   ICM is the only true cross-host store. Do not propose daemon-centric
+   alternatives (e.g. agentmemory) as a cross-host store — they clash with the
+   no-daemon thesis. Markdown (CLAUDE.md / AGENTS.md) is for committed, git-
+   reviewed facts; ICM is for semantic recall + structured facts + blackboard.
+   <!-- paw:decision:icm-only-store:end -->
 2. **Scope narrow** — experiential→ICM; committed→AGENTS.md family. **Storage
    split, recall unified** (recall reads ICM **and** greps the host context file).
 3. **Continuity → ICM blackboard handoff** (retire CC-file's cross-host role;
@@ -128,6 +135,13 @@ no-daemon baseline.
 8. **Memoir later, not now** — Memoirs are for curated stable concepts and graph
    visualization after the ordinary pending→wiki flow is trustworthy. Do not
    use Memoir as a pending drain or automatic transcript distiller.
+
+   <!-- paw:decision:memoir-deferred:start -->
+   Memoir (ICM knowledge graph) is deferred, not used. Do not wire Memoir as a
+   pending drain or automatic transcript distiller — it is reserved for curated
+   stable concepts AFTER the pending→wiki flow is trustworthy. Treat any Memoir
+   proposal as premature until the ordinary memory loop is honest end-to-end.
+   <!-- paw:decision:memoir-deferred:end -->
 
 ## Wiki entry schema (ICM)
 

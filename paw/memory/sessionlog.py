@@ -91,7 +91,9 @@ def mark(session_id: str, ids: list[str] | set[str], *, now: float | None = None
             merged = {i: t for i, t in _load_seen_map(session_id).items() if t >= cutoff}
             for i in ids:
                 merged[str(i)] = ts
-            p.write_text(json.dumps({"seen": merged, "ts": ts}), encoding="utf-8")
+            # atomic write: a crash mid-write must not corrupt the dedup file
+            from .store import write_text_atomic
+            write_text_atomic(p, json.dumps({"seen": merged, "ts": ts}))
         _prune()
     except OSError:
         pass  # a failed mark = at worst one duplicate inject later

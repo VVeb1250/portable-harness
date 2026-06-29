@@ -343,5 +343,102 @@ class SessionDedupTests(unittest.TestCase):
         self.assertIn("use py launcher", block_b)  # different session → re-injects
 
 
+def _canned(lessons):
+    """Helper: build a recall_runner JSON payload from a list of lesson dicts."""
+    return json.dumps(lessons)
+
+
+class VoiceRenderingTests(unittest.TestCase):
+    """The voice classifier changes how each lesson is formatted by urgency."""
+
+    def _run(self, lessons, prompt="rm home dir cleanup", session_id="sess-v1"):
+        # prompt words overlap with each lesson's keywords so they pass the
+        # keyword-overlap gate in _relevant_lessons.
+        canned = _canned(lessons)
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.dict(os.environ, {"PAW_HOME": d}):
+                with mock.patch.object(rb, "_LINK_STATE_PROBE", lambda s, cwd: "absent"):
+                    return paw_block(prompt, session_id=session_id, recall_runner=lambda p: canned)
+
+    def test_shout_lesson_uses_stop_prefix(self) -> None:
+        block = self._run([{
+            "id": "m-shout", "summary": "never run rm -rf on home dir",
+            "importance": "critical", "topic": "mistakes",
+            "keywords": ["type:execution", "conf:0.9", "rm", "home"],
+        }], prompt="rm home dir cleanup")
+        self.assertIn("🛑 STOP", block)
+        self.assertIn("never run rm -rf", block)
+
+    def test_warn_lesson_uses_caution_prefix(self) -> None:
+        block = self._run([{
+            "id": "m-warn", "summary": "watch for unhandled None branch",
+            "importance": "high", "topic": "mistakes",
+            "keywords": ["type:silent-bug", "conf:0.6", "none", "branch"],
+        }], prompt="none branch handling")
+        self.assertIn("⚠️ caution", block)
+
+    def test_silent_lesson_not_rendered(self) -> None:
+        # low confidence → SILENT → not shown even though matched
+        block = self._run([{
+            "id": "m-silent", "summary": "maybe avoid thing",
+            "importance": "high", "topic": "mistakes",
+            "keywords": ["type:misalignment", "conf:0.2", "thing", "avoid"],
+        }], prompt="avoid thing here")
+        self.assertNotIn("maybe avoid thing", block)
+
+    def test_legacy_lesson_without_conf_nudges(self) -> None:
+        block = self._run([{
+            "id": "m-legacy", "summary": "use py launcher on windows",
+            "importance": "high", "topic": "mistakes", "keywords": ["py", "windows"],
+        }], prompt="python windows launcher")
+        self.assertIn("💡 note", block)
+        self.assertIn("use py launcher", block)
+
+    def test_shouts_ordered_before_warns(self) -> None:
+        block = self._run([
+            {"id": "m-warn", "summary": "warn body none", "importance": "high",
+             "topic": "mistakes", "keywords": ["type:silent-bug", "conf:0.6", "none"]},
+            {"id": "m-shout", "summary": "shout body rm", "importance": "critical",
+             "topic": "mistakes", "keywords": ["type:execution", "conf:0.95", "rm"]},
+        ], prompt="rm none branch")
+        self.assertLess(block.index("shout body"), block.index("warn body"))
+
+
+class ShoutBypassesDedupTests(unittest.TestCase):
+    """A SHOUT re-surfaces even if already injected this session."""
+
+    def test_shout_re_injects_within_same_session(self) -> None:
+        canned = _canned([{
+            "id": "m-shout", "summary": "never run rm -rf on home dir",
+            "importance": "critical", "topic": "mistakes",
+            "keywords": ["type:execution", "conf:0.95", "rm", "home"],
+        }])
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.dict(os.environ, {"PAW_HOME": d}):
+                with mock.patch.object(rb, "_LINK_STATE_PROBE", lambda s, cwd: "absent"):
+                    first = paw_block("rm home dir", session_id="sess-shout-1",
+                                      recall_runner=lambda p: canned)
+                    second = paw_block("rm home dir", session_id="sess-shout-1",
+                                       recall_runner=lambda p: canned)
+        self.assertIn("never run rm -rf", first)
+        self.assertIn("never run rm -rf", second)
+
+    def test_warn_still_dedups_within_session(self) -> None:
+        canned = _canned([{
+            "id": "m-warn", "summary": "watch for unhandled none branch",
+            "importance": "high", "topic": "mistakes",
+            "keywords": ["type:silent-bug", "conf:0.6", "none", "branch"],
+        }])
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.dict(os.environ, {"PAW_HOME": d}):
+                with mock.patch.object(rb, "_LINK_STATE_PROBE", lambda s, cwd: "absent"):
+                    first = paw_block("none branch", session_id="sess-warn-1",
+                                      recall_runner=lambda p: canned)
+                    second = paw_block("none branch", session_id="sess-warn-1",
+                                       recall_runner=lambda p: canned)
+        self.assertIn("watch for unhandled none", first)
+        self.assertNotIn("watch for unhandled none", second)
+
+
 if __name__ == "__main__":
     unittest.main()

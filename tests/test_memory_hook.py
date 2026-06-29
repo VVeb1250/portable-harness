@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from paw import memory_hook
 from paw.memory_hook import (
     PENDING_COUNT_TTL_SECONDS,
     build_config,
@@ -19,6 +20,16 @@ from paw.memory_mesh import MemoryMesh, MeshScope
 
 
 class MemoryHookTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # The resume builder reads the live ICM/git; for mesh-silence tests we
+        # stub it to "" so they assert mesh behaviour, not resume content.
+        # Tests that exercise resume set their own builder.
+        self._prev_builder = memory_hook._resume_builder
+        memory_hook._resume_builder = lambda config: ""
+
+    def tearDown(self) -> None:
+        memory_hook._resume_builder = self._prev_builder
+
     def test_user_prompt_hook_registers_polls_and_advances_cursor(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             state_dir = Path(directory) / "mesh"
@@ -51,15 +62,20 @@ class MemoryHookTests(unittest.TestCase):
             self.assertEqual(second.additional_context, "")
 
     def test_hook_stdout_uses_host_hook_json_shape(self) -> None:
+        # Use an EMPTY cwd so the resume block stays silent (no markdown); this
+        # test asserts the lone-presence-event silence, not resume content.
+        directory = tempfile.mkdtemp()
+        workdir = Path(directory) / "work"
+        workdir.mkdir()
         result = run_memory_hook(
             build_config(
-                {"cwd": str(Path.cwd()), "session_id": "s"},
+                {"cwd": str(workdir), "session_id": "s"},
                 host="claude-code",
                 event="session-start",
                 project="p",
                 run_id="r",
-                state_dir=Path(tempfile.mkdtemp()),
-                hook_state_dir=Path(tempfile.mkdtemp()),
+                state_dir=Path(directory) / "mesh",
+                hook_state_dir=Path(directory) / "hooks",
             ),
             count_runner=lambda: 0,
         )
@@ -75,8 +91,12 @@ class MemoryHookTests(unittest.TestCase):
 
     def test_pending_nudge_is_silent_below_warn_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
+            # Use an EMPTY cwd so the resume block finds no markdown and stays
+            # silent — this test asserts pending-nudge silence, not resume.
+            workdir = Path(directory) / "work"
+            workdir.mkdir()
             config = build_config(
-                {"cwd": str(Path.cwd()), "session_id": "s"},
+                {"cwd": str(workdir), "session_id": "s"},
                 host="codex",
                 event="session-start",
                 project="p",
@@ -91,8 +111,10 @@ class MemoryHookTests(unittest.TestCase):
 
     def test_pending_nudge_surfaces_above_warn_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
+            workdir = Path(directory) / "work"
+            workdir.mkdir()
             config = build_config(
-                {"cwd": str(Path.cwd()), "session_id": "s"},
+                {"cwd": str(workdir), "session_id": "s"},
                 host="codex",
                 event="session-start",
                 project="p",

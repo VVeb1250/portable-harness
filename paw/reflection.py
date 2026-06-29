@@ -233,6 +233,10 @@ class Candidate:
     detail: str          # one-line context (the fix / what was wanted)
     raw: str = ""        # verbatim error or command excerpt
     terms: tuple[str, ...] = ()
+    # confidence: how sure we are this is a GENUINE mistake worth surfacing.
+    # Separate from importance (severity). Error-class signals are deterministic
+    # (high); silent-bug / misalignment are inferred (lower, bump on recurrence).
+    confidence: float = 0.5
 
     @property
     def content(self) -> str:
@@ -408,6 +412,9 @@ def _exec_candidates(events: list[dict]) -> list[Candidate]:
             detail=(f"fixed by: {fix}" if fix else "no in-session fix found")[:170],
             raw=f"$ {cmd}\n{ev['text']}"[:600],
             terms=_terms(f"{ev['name']} {cmd} {err}"),
+            # A confirmed fail→fix pair is the strongest deterministic signal.
+            # A bare is_error (no follow-up fix) is real but less actionable.
+            confidence=0.85 if fix else 0.7,
         ))
     return out
 
@@ -431,6 +438,10 @@ def _misalign_candidates(texts: list[str]) -> list[Candidate]:
             detail="",
             raw=text[:400],
             terms=_terms(text),
+            # User corrections are inferred, not deterministic — a terse "no, do
+            # X instead" may be preference, not a genuine mistake. Low default,
+            # bumped on recurrence in curate.
+            confidence=0.3,
         ))
     return out
 
@@ -469,7 +480,7 @@ def _default_store(cmd: list[str]) -> int:
 
 
 def _store_cmd(c: Candidate, session_id: str) -> list[str]:
-    kws = [f"type:{c.type}", f"signal:{c.signal}"]
+    kws = [f"type:{c.type}", f"signal:{c.signal}", f"conf:{c.confidence:.2f}"]
     if session_id:
         kws.append(f"session:{session_id[:12]}")
     kws.extend(c.terms)
@@ -545,4 +556,10 @@ def capture(
                     stored += 1
             except Exception:
                 continue
+    # NOTE: no post-write re-read verify here, by design. Pending is a TEMPORARY
+    # parking topic; curate is the gate that verifies visibility (via
+    # _verify_visible) BEFORE promoting a candidate to the durable wiki. Adding
+    # a verify here would double the ICM cost on the Stop hot path for entries
+    # that are deliberately disposable. The facts/wiki writes that MUST be
+    # honest are already guarded (facts.set_fact re-reads; curate._apply verifies).
     return CaptureResult(str(transcript_path), candidates, stored, write, next_line)
